@@ -1,42 +1,48 @@
-import React, { Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import { CartDrawer } from '@/components/CartDrawer';
 import { CartProvider } from '@/context/CartContext';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
-import CartDrawer from '@/components/CartDrawer';
-import AuthModal from '@/components/AuthModal';
-import ProductDetailModal from '@/components/ProductDetailModal';
+import { Home } from '@/pages/Home';
+import { ShopPage } from '@/pages/ShopPage';
+import { ProductDetailPage } from '@/pages/ProductDetailPage';
+import { CheckoutPage } from '@/pages/CheckoutPage';
+import { DashboardPage } from '@/pages/DashboardPage';
+import { cn } from '@/lib/utils';
 
-const Home = lazy(() => import('@/pages/Home'));
-const ShopPage = lazy(() => import('@/pages/ShopPage'));
-const ProductPage = lazy(() => import('@/pages/ProductPage'));
-const StoreFlowPages = lazy(() => import('@/pages/StoreFlowPages'));
+function AppShell() {
+  const location = useLocation();
+  const [cartOpen, setCartOpen] = useState(false);
+  const isCheckout = useMemo(() => location.pathname?.includes('/checkout') ?? false, [location.pathname]);
+
+  return (
+    <div className="min-h-screen bg-[#F5F1EC] text-[#211F1D] antialiased">
+      <Header />
+      <main className={cn('min-h-[calc(100vh-8rem)]', isCheckout ? 'bg-[#FFFCF8]' : '')}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/shop" element={<ShopPage />} />
+          <Route path="/products/:slug" element={<ProductDetailPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/cart" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      <Footer />
+      <CartDrawer open={cartOpen} onOpenChange={setCartOpen} />
+      <Toaster position="top-right" richColors closeButton />
+    </div>
+  );
+}
 
 export function App() {
   return (
     <HashRouter>
       <CartProvider>
-        <div className="min-h-screen bg-[#F9F7F6] text-[#2B2B2B] antialiased">
-          <Header />
-          <Suspense fallback={<div className="px-4 py-16 text-center text-sm uppercase tracking-[0.2em] text-[#6E655F]">Loading</div>}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/shop" element={<ShopPage />} />
-              <Route path="/product/:slug" element={<ProductPage />} />
-              <Route path="/cart" element={<StoreFlowPages />} />
-              <Route path="/checkout" element={<StoreFlowPages />} />
-              <Route path="/dashboard" element={<StoreFlowPages />} />
-              <Route path="/login" element={<StoreFlowPages />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-          <Footer />
-          <CartDrawer />
-          <AuthModal />
-          <ProductDetailModal />
-          <Toaster position="top-right" richColors closeButton />
-        </div>
+        <AppShell />
       </CartProvider>
     </HashRouter>
   );

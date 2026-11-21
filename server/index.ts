@@ -1,127 +1,165 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import auth from './auth';
-import { db, initializeDatabase, inspectTables, getTableData } from './db';
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import auth from "./auth";
+import { initializeDatabase, inspectTables, getTableData, db } from "./db";
 
-const index = new Hono();
+type Env = { Variables: { user?: { id?: string; email?: string; role?: string } } };
 
-const json = (data: unknown, success = true, message?: string) => ({ success, message, data });
-const num = (v: unknown, d = 0) => {
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : d;
-};
-const str = (v: unknown, d = '') => (typeof v === 'string' ? v.trim() : d);
-const safeTable = (t: string) => /^[a-zA-Z0-9_]+$/.test(t) ? t : '';
-const now = () => new Date().toISOString();
-
+const index = new Hono<Env>();
 initializeDatabase();
 
-index.use('*', cors({ origin: '*', allowHeaders: ['Content-Type', 'Authorization'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+index.use(
+  "/api/*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+  })
+);
+
 index.all('/api/auth/*', (c) => typeof auth !== 'undefined' && auth && auth.handler ? auth.handler(c.req.raw) : (typeof auth === 'function' ? auth(c.req.raw) : c.json({ error: 'Auth handler unavailable' }, 500)));
 
-index.get('/api/health', (c) => c.json(json({ ok: true, time: now() }, true, 'healthy')));
+const json = (data: unknown, message?: string, error?: string, status = 200) =>
+  Response.json({ data, message, error }, { status });
 
-index.get('/api/products', async (c) => {
-  const q = str(c.req.query('query')).toLowerCase();
-  const category = str(c.req.query('category')).toLowerCase();
-  const collection = str(c.req.query('collection')).toLowerCase();
-  const sort = str(c.req.query('sort'), 'featured');
-  const page = Math.max(1, num(c.req.query('page'), 1));
-  const limit = Math.min(100, Math.max(1, num(c.req.query('limit'), 12)));
-  const offset = (page - 1) * limit;
-  const rows = await db.query('SELECT * FROM products ORDER BY createdAt DESC');
-  let items = (rows?.rows ?? []).map((r: any) => ({ ...r, images: JSON.parse(r.images ?? '[]'), sizes: JSON.parse(r.sizes ?? '[]') }));
-  if (q) items = items.filter((p: any) => `${p.name ?? ''} ${p.description ?? ''} ${p.category ?? ''} ${p.collection ?? ''}`.toLowerCase().includes(q));
-  if (category) items = items.filter((p: any) => str(p.category).toLowerCase() === category);
-  if (collection) items = items.filter((p: any) => str(p.collection).toLowerCase() === collection);
-  items.sort((a: any, b: any) => {
-    if (sort === 'price-asc') return num(a.price) - num(b.price);
-    if (sort === 'price-desc') return num(b.price) - num(a.price);
-    if (sort === 'newest') return String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''));
-    return Number(!!b.featured) - Number(!!a.featured) || String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''));
+const toNum = (v: unknown, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const isId = (v: unknown) => typeof v === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(v);
+const isStatus = (v: unknown) => ["pending", "paid", "fulfilled", "cancelled"].includes(String(v ?? ""));
+const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const now = () => new Date().toISOString();
+
+index.get("/api/health", (c) => json({ ok: true, timestamp: now() }, "ok"));
+
+index.get("/api/products", (c) => {
+  const rows = db
+    .query(
+      "SELECT id, slug, name, description, category, collection, price, compareAtPrice, currency, images, variants, featured, inStock, tags, createdAt, updatedAt FROM products ORDER BY COALESCE(featured, 0) DESC, datetime(COALESCE(updatedAt, createdAt, CURRENT_TIMESTAMP)) DESC"
+    )
+    .all() as any[];
+  const data = rows.map((r) => ({
+    ...r,
+    price: toNum(r?.price),
+    compareAtPrice: r?.compareAtPrice == null ? null : toNum(r?.compareAtPrice),
+    images: Array.isArray(r?.images) ? r.images : JSON.parse(r?.images ?? "[]"),
+    variants: Array.isArray(r?.variants) ? r.variants : JSON.parse(r?.variants ?? "[]"),
+    tags: Array.isArray(r?.tags) ? r.tags : JSON.parse(r?.tags ?? "[]"),
+    featured: Boolean(r?.featured),
+    inStock: r?.inStock == null ? true : Boolean(r?.inStock),
+  }));
+  return json(data);
+});
+
+index.get("/api/products/:slug", (c) => {
+  const slug = safeText(c.req.param("slug"));
+  if (!slug) return json(null, "Invalid slug", "INVALID_SLUG", 400);
+  const row = db
+    .query(
+      "SELECT id, slug, name, description, category, collection, price, compareAtPrice, currency, images, variants, featured, inStock, tags, createdAt, updatedAt FROM products WHERE slug = ? LIMIT 1"
+    )
+    .get(slug) as any;
+  if (!row) return json(null, "Product not found", "NOT_FOUND", 404);
+  return json({
+    ...row,
+    price: toNum(row?.price),
+    compareAtPrice: row?.compareAtPrice == null ? null : toNum(row?.compareAtPrice),
+    images: Array.isArray(row?.images) ? row.images : JSON.parse(row?.images ?? "[]"),
+    variants: Array.isArray(row?.variants) ? row.variants : JSON.parse(row?.variants ?? "[]"),
+    tags: Array.isArray(row?.tags) ? row.tags : JSON.parse(row?.tags ?? "[]"),
+    featured: Boolean(row?.featured),
+    inStock: row?.inStock == null ? true : Boolean(row?.inStock),
   });
-  const total = items.length;
-  return c.json(json({ data: items.slice(offset, offset + limit), page, limit, total, hasMore: offset + limit < total }, true, 'products'));
 });
 
-index.get('/api/products/:slug', async (c) => {
-  const slug = str(c.req.param('slug'));
-  const row = await db.query('SELECT * FROM products WHERE slug = ? LIMIT 1', [slug]);
-  const product = row?.rows?.[0] ? { ...row.rows[0], images: JSON.parse((row.rows[0] as any).images ?? '[]'), sizes: JSON.parse((row.rows[0] as any).sizes ?? '[]') } : null;
-  if (!product) return c.json(json(null, false, 'Product not found'), 404);
-  const reviews = await db.query('SELECT * FROM reviews WHERE productId = ? ORDER BY createdAt DESC', [product.id]);
-  return c.json(json({ product, reviews: reviews?.rows ?? [] }, true, 'product'));
+index.get("/api/orders", (c) => {
+  const userId = c.get("user")?.id ?? null;
+  const rows = db
+    .query(
+      userId
+        ? "SELECT * FROM orders WHERE userId = ? ORDER BY datetime(createdAt) DESC"
+        : "SELECT * FROM orders ORDER BY datetime(createdAt) DESC"
+    )
+    .all(userId ? [userId] : []) as any[];
+  const data = rows.map((o) => ({
+    ...o,
+    items: Array.isArray(o?.items) ? o.items : JSON.parse(o?.items ?? "[]"),
+    subtotal: toNum(o?.subtotal),
+    shipping: toNum(o?.shipping),
+    tax: toNum(o?.tax),
+    total: toNum(o?.total),
+  }));
+  return json(data);
 });
 
-index.post('/api/reviews', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const productId = str(body?.productId);
-  const rating = Math.max(1, Math.min(5, Math.round(num(body?.rating, 0))));
-  const title = str(body?.title);
-  const reviewBody = str(body?.body);
-  const userName = str(body?.userName, 'Guest');
-  const userId = str(body?.userId, 'guest');
-  if (!productId || !reviewBody || !rating) return c.json(json(null, false, 'Invalid review payload'), 400);
-  const id = crypto.randomUUID();
-  await db.query('INSERT INTO reviews (id, productId, userId, userName, rating, title, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, userId, userName, rating, title || null, reviewBody, now(), now()]);
-  return c.json(json({ id, productId, userId, userName, rating, title, body: reviewBody }, true, 'Review created'), 201);
-});
-
-index.post('/api/orders', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
+index.post("/api/orders", async (c) => {
+  const body = await c.req.json().catch(() => null);
   const items = Array.isArray(body?.items) ? body.items : [];
-  const shippingAddress = body?.shippingAddress ?? {};
-  const fullName = str(shippingAddress?.fullName);
-  const line1 = str(shippingAddress?.line1);
-  const city = str(shippingAddress?.city);
-  const postalCode = str(shippingAddress?.postalCode);
-  const country = str(shippingAddress?.country);
-  if (!items.length || !fullName || !line1 || !city || !postalCode || !country) return c.json(json(null, false, 'Invalid order payload'), 400);
-  const subtotal = items.reduce((sum: number, item: any) => sum + num(item?.price) * Math.max(1, num(item?.quantity, 1)), 0);
-  const shippingFee = subtotal > 15000 ? 0 : 499;
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + shippingFee + tax;
+  if (!items.length) return json(null, "Order items are required", "INVALID_PAYLOAD", 400);
+
+  const normalized = items
+    .map((item: any) => ({
+      productId: safeText(item?.productId),
+      variantId: item?.variantId == null ? null : safeText(item?.variantId),
+      name: safeText(item?.name),
+      price: toNum(item?.price),
+      quantity: Math.floor(toNum(item?.quantity, 0)),
+      image: item?.image == null ? null : safeText(item?.image),
+    }))
+    .filter((item: any) => isId(item.productId) && item.name && item.price >= 0 && item.quantity > 0);
+
+  if (!normalized.length) return json(null, "Invalid order items", "INVALID_ITEMS", 400);
+
+  const subtotal = normalized.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+  const shipping = Math.max(0, toNum(body?.shipping, subtotal > 0 ? 250 : 0));
+  const tax = Math.max(0, toNum(body?.tax, Math.round(subtotal * 0.05)));
+  const total = Math.max(0, toNum(body?.total, subtotal + shipping + tax));
+  if (Math.abs(total - (subtotal + shipping + tax)) > 0.01) return json(null, "Total mismatch", "INVALID_TOTAL", 400);
+
+  const status = isStatus(body?.status) ? body.status : "pending";
   const id = crypto.randomUUID();
-  await db.query('INSERT INTO orders (id, userId, items, shippingAddress, subtotal, shippingFee, tax, total, currency, status, paymentMethod, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, str(body?.userId) || null, JSON.stringify(items), JSON.stringify(shippingAddress), subtotal, shippingFee, tax, total, str(body?.currency, 'INR'), 'pending', str(body?.paymentMethod, 'card') || null, now(), now()]);
-  return c.json(json({ id, subtotal, shippingFee, tax, total, status: 'pending' }, true, 'Order created'), 201);
+  const userId = c.get("user")?.id ?? null;
+  const createdAt = now();
+  const shippingAddress = body?.shippingAddress ?? null;
+  const billingAddress = body?.billingAddress ?? null;
+
+  db.query(
+    "INSERT INTO orders (id, userId, items, subtotal, shipping, tax, total, currency, status, shippingAddress, billingAddress, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    id,
+    userId,
+    JSON.stringify(normalized),
+    subtotal,
+    shipping,
+    tax,
+    total,
+    safeText(body?.currency) || "INR",
+    status,
+    shippingAddress ? JSON.stringify(shippingAddress) : null,
+    billingAddress ? JSON.stringify(billingAddress) : null,
+    createdAt,
+    createdAt
+  );
+
+  return json({ orderId: id, paymentUrl: null }, "Order created", undefined, 201);
 });
 
-index.get('/api/orders', async (c) => {
-  const userId = str(c.req.query('userId'));
-  const rows = await db.query(userId ? 'SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC' : 'SELECT * FROM orders ORDER BY createdAt DESC', userId ? [userId] : []);
-  const orders = (rows?.rows ?? []).map((r: any) => ({ ...r, items: JSON.parse(r.items ?? '[]'), shippingAddress: JSON.parse(r.shippingAddress ?? '{}') }));
-  return c.json(json(orders, true, 'orders'));
+index.get("/api/admin/tables", (c) => {
+  const user = c.get("user") ?? null;
+  if (user?.role !== "admin") return json(null, "Forbidden", "FORBIDDEN", 403);
+  return json(inspectTables());
 });
 
-index.get('/api/admin/tables', (c) => c.json(json(inspectTables(), true, 'tables')));
-index.get('/api/admin/tables/:table', (c) => {
-  const table = safeTable(str(c.req.param('table')));
-  if (!table) return c.json(json(null, false, 'Invalid table name'), 400);
-  return getTableData(table).then((data) => c.json(json(data, true, 'table data')));
+index.get("/api/admin/tables/:tableName", (c) => {
+  const user = c.get("user") ?? null;
+  if (user?.role !== "admin") return json(null, "Forbidden", "FORBIDDEN", 403);
+  const tableName = safeText(c.req.param("tableName"));
+  if (!isId(tableName)) return json(null, "Invalid table name", "INVALID_TABLE", 400);
+  return json(getTableData(tableName));
 });
 
-index.get('/api/cart/:userId', async (c) => {
-  const userId = str(c.req.param('userId'));
-  const rows = await db.query('SELECT * FROM cart_items WHERE userId = ? ORDER BY addedAt DESC', [userId]);
-  return c.json(json(rows?.rows ?? [], true, 'cart'));
-});
-
-index.post('/api/cart', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  const userId = str(body?.userId);
-  const productId = str(body?.productId);
-  const quantity = Math.max(1, num(body?.quantity, 1));
-  if (!userId || !productId) return c.json(json(null, false, 'Invalid cart payload'), 400);
-  const id = crypto.randomUUID();
-  await db.query('INSERT INTO cart_items (id, userId, productId, quantity, size, color, price, addedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, productId, quantity, str(body?.size) || null, str(body?.color) || null, num(body?.price), now()]);
-  return c.json(json({ id }, true, 'Cart item added'), 201);
-});
-
-index.delete('/api/cart/:id', async (c) => {
-  const id = str(c.req.param('id'));
-  await db.query('DELETE FROM cart_items WHERE id = ?', [id]);
-  return c.json(json({ id }, true, 'Cart item removed'));
-});
-
-export { index };
 export default index;

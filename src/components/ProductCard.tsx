@@ -1,36 +1,61 @@
-import React, { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Eye, Plus, ShoppingBag, Star } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { Product } from '@/types';
-import { useCart } from '@/context/CartContext';
-import ProductDetailModal from '@/components/ProductDetailModal';
+import React, { useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowRight, Eye, Heart, ShoppingBag, Star } from 'lucide-react';
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { useCart } from "@/context/CartContext";
+import ProductDetailModal from "@/components/ProductDetailModal";
+import type { Product } from "@/types";
 
-export interface ProductCardProps {
+type ProductCardProps = {
   product?: Product | null;
   className?: string;
-  onQuickView?: (product: Product) => void;
+  onQuickPreview?: (product: Product) => void;
+};
+
+type EditorialGridProps = {
+  children?: React.ReactNode;
+  className?: string;
+};
+
+export function EditorialGrid({ children, className = "" }: EditorialGridProps) {
+  return <div className={cn("grid gap-5 sm:grid-cols-2 xl:grid-cols-3", className)}>{children}</div>;
 }
 
-export function ProductCard({ product = null, className = '', onQuickView }: ProductCardProps) {
-  const { addToCart } = useCart?.() ?? {};
+export function ProductCard({ product = null, className = "", onQuickPreview }: ProductCardProps) {
+  const { addItem } = useCart?.() ?? {};
   const [open, setOpen] = useState(false);
-  const image = product?.images?.[0]?.url ?? 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80';
-  const alt = product?.images?.[0]?.alt ?? product?.name ?? 'Product image';
-  const priceLabel = useMemo(() => {
-    const currency = product?.currency ?? '₹';
-    const value = Number.isFinite(product?.price ?? NaN) ? (product?.price ?? 0).toLocaleString('en-IN') : '0';
-    return `${currency}${value}`;
-  }, [product?.currency, product?.price]);
+  const [wishlisted, setWishlisted] = useState(false);
+
+  const image = useMemo(() => product?.images?.[0] ?? "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85", [product?.images]);
+  const currency = product?.currency ?? "INR";
+  const priceLabel = useMemo(() => new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(product?.price ?? 0), [currency, product?.price]);
+  const compareLabel = useMemo(() => {
+    const compare = product?.compareAtPrice ?? null;
+    return compare && compare > (product?.price ?? 0)
+      ? new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(compare)
+      : "";
+  }, [currency, product?.compareAtPrice, product?.price]);
 
   const handleQuickAdd = () => {
     if (!product) return;
-    addToCart?.(product, 1);
+    const firstVariant = product?.variants?.[0];
+    addItem?.({
+      productId: product.id,
+      variantId: firstVariant?.id ?? null,
+      name: product.name,
+      image: firstVariant?.image ?? image,
+      price: firstVariant?.price ?? product.price,
+      quantity: 1,
+      color: firstVariant?.color ?? null,
+      size: firstVariant?.size ?? null,
+    });
+    toast.success(`${product.name} added to cart`);
   };
 
-  const handleQuickView = () => {
+  const handlePreview = () => {
     if (!product) return;
-    if (onQuickView) onQuickView(product);
+    if (onQuickPreview) onQuickPreview(product);
     else setOpen(true);
   };
 
@@ -39,67 +64,90 @@ export function ProductCard({ product = null, className = '', onQuickView }: Pro
   return (
     <>
       <motion.article
-        initial={{ opacity: 0, y: 14 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.25 }}
-        transition={{ duration: 0.45, ease: 'easeOut' }}
-        className={cn('group relative flex h-full flex-col overflow-hidden border border-[#C9BDB2] bg-[#F9F7F6] text-[#2B2B2B]', className)}
+        whileHover={{ y: -4 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className={cn("group relative overflow-hidden border border-[#CFC5B8] bg-[#FFFCF8] text-[#211F1D]", className)}
       >
-        <button type="button" onClick={handleQuickView} className="relative block w-full text-left">
-          <div className="relative aspect-[3/4] overflow-hidden bg-[#EFEAE5]">
-            <img
-              src={image}
-              alt={alt}
-              crossOrigin="anonymous"
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-black/0 transition-colors duration-300 group-hover:bg-black/10" />
-            <div className="absolute left-3 top-3 flex items-center gap-2 bg-[#F9F7F6]/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#2B2B2B] backdrop-blur-sm">
-              <Eye className="h-3.5 w-3.5" />
-              Quick View
-            </div>
+        <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F1EC]">
+          <img
+            src={image}
+            alt={product.name}
+            crossOrigin="anonymous"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+          <div className="absolute left-3 top-3 flex items-center gap-2">
+            {product.featured ? (
+              <span className="border border-[#CFC5B8] bg-[#FFFCF8]/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#211F1D]">
+                Featured
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setWishlisted((v) => !v)}
+              className="inline-flex h-8 w-8 items-center justify-center border border-[#CFC5B8] bg-[#FFFCF8]/90 text-[#211F1D] transition-colors hover:bg-[#8B0000] hover:text-white"
+              aria-label="Save to wishlist"
+            >
+              <Heart className={cn("h-4 w-4", wishlisted ? "fill-current" : "")} />
+            </button>
           </div>
-        </button>
-
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">
-                {product.collection ?? product.category ?? 'Collection'}
-              </p>
-              <h3 className="mt-1 truncate font-['Playfair_Display'] text-lg font-medium leading-tight text-[#2B2B2B]">
-                {product.name}
-              </h3>
-            </div>
-            <div className="flex shrink-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6E655F]">
-              <Star className="h-3.5 w-3.5 fill-current" />
-              <span>{Number.isFinite(product.rating ?? NaN) ? (product.rating ?? 0).toFixed(1) : '4.8'}</span>
-            </div>
-          </div>
-
-          <p className="line-clamp-2 min-h-[2.5rem] text-sm leading-6 text-[#6E655F]">
-            {product.description}
-          </p>
-
-          <div className="mt-auto flex items-end justify-between gap-3 border-t border-[#C9BDB2] pt-3">
+          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-[#211F1D]/70 via-[#211F1D]/20 to-transparent p-4 text-white">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Price</p>
-              <p className="mt-1 font-['Playfair_Display'] text-xl font-semibold text-[#2B2B2B]">{priceLabel}</p>
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.24em] text-white/80">{product.collection ?? product.category ?? "Collection"}</p>
+              <h3 className="mt-1 truncate font-['Bodoni_Moda'] text-2xl font-light tracking-tight">{product.name}</h3>
+            </div>
+            <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em]">
+              <Star className="h-3.5 w-3.5 fill-current" />
+              <span>{product.inStock ?? true ? "In stock" : "Sold out"}</span>
+            </div>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-3 justify-center opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+            <div className="pointer-events-auto mb-4 flex w-[calc(100%-2rem)] items-center justify-between gap-2 border border-[#CFC5B8] bg-[#FFFCF8] p-2">
+              <button
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={!(product.inStock ?? true)}
+                className="inline-flex flex-1 items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                Quick Add
+              </button>
+              <button
+                type="button"
+                onClick={handlePreview}
+                className="inline-flex items-center justify-center border border-[#CFC5B8] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#211F1D] transition-colors hover:bg-[#F5F1EC]"
+              >
+                <Eye className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6F685F]">{product.category ?? product.collection ?? "Editorial"}</p>
+              <p className="mt-1 line-clamp-2 text-sm leading-5 text-[#211F1D]">{product.description ?? "Tailored silhouette with a restrained finish."}</p>
             </div>
             <button
               type="button"
-              onClick={handleQuickAdd}
-              className="inline-flex items-center gap-2 border border-[#B11226] bg-[#B11226] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white transition-colors duration-200 hover:bg-[#8F0E1F]"
+              onClick={handlePreview}
+              className="inline-flex shrink-0 items-center gap-1 border border-[#CFC5B8] px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#211F1D] transition-colors hover:bg-[#F5F1EC]"
             >
-              <ShoppingBag className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Quick Add</span>
-              <Plus className="h-3.5 w-3.5 sm:hidden" />
+              Preview
+              <ArrowRight className="h-3.5 w-3.5" />
             </button>
+          </div>
+          <div className="flex items-end justify-between gap-3 border-t border-[#CFC5B8] pt-3">
+            <div className="min-w-0">
+              <p className="text-lg font-semibold text-[#211F1D]">{priceLabel}</p>
+              {compareLabel ? <p className="text-xs text-[#6F685F] line-through">{compareLabel}</p> : null}
+            </div>
+            <p className={cn("text-[10px] font-semibold uppercase tracking-[0.22em]", product.inStock ?? true ? "text-[#6F685F]" : "text-[#8B0000]")}>
+              {(product.inStock ?? true) ? "Available now" : "Out of stock"}
+            </p>
           </div>
         </div>
       </motion.article>
-
-      <ProductDetailModal product={product} open={open} onOpenChange={setOpen} />
+      <ProductDetailModal open={open} onOpenChange={setOpen} product={product} />
     </>
   );
 }

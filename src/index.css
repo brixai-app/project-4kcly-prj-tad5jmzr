@@ -3,26 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #F9F7F6;
-  --color-bg-rgb: 249, 247, 246;
-  --color-surface: #EFEAE5;
-  --color-surface-rgb: 239, 234, 229;
-  --color-surface-hover: #E5DDD5;
-  --color-surface-hover-rgb: 229, 221, 213;
-  --color-border: #C9BDB2;
-  --color-border-rgb: 201, 189, 178;
-  --color-text-primary: #2B2B2B;
-  --color-text-primary-rgb: 43, 43, 43;
-  --color-text-muted: #6E655F;
-  --color-text-muted-rgb: 110, 101, 95;
-  --color-accent: #B11226;
-  --color-accent-rgb: 177, 18, 38;
-  --color-accent-hover: #8F0E1F;
-  --color-accent-hover-rgb: 143, 14, 31;
+  --color-bg: #F5F1EC;
+  --color-bg-rgb: 245, 241, 236;
+  --color-surface: #FFFCF8;
+  --color-surface-rgb: 255, 252, 248;
+  --color-surface-hover: #EAE3DA;
+  --color-surface-hover-rgb: 234, 227, 218;
+  --color-border: #CFC5B8;
+  --color-border-rgb: 207, 197, 184;
+  --color-text-primary: #211F1D;
+  --color-text-primary-rgb: 33, 31, 29;
+  --color-text-muted: #6F685F;
+  --color-text-muted-rgb: 111, 104, 95;
+  --color-accent: #8B0000;
+  --color-accent-rgb: 139, 0, 0;
+  --color-accent-hover: #650000;
+  --color-accent-hover-rgb: 101, 0, 0;
   --color-accent-text: #ffffff;
   --radius-theme: 2px;
-  --font-heading: 'Playfair Display', sans-serif;
-  --font-body: 'Lora', sans-serif;
+  --font-heading: 'Bodoni Moda', sans-serif;
+  --font-body: 'Manrope', sans-serif;
 }
 
 @layer base {
