@@ -1,128 +1,122 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import type { CartItem, Product, ProductVariant } from '@/types';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { CartItem, Product } from "@/types";
 
 type CartContextValue = {
   items: CartItem[];
-  isDrawerOpen: boolean;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
   subtotal: number;
-  bagCount: number;
-  addToCart: (product: Product, variant?: ProductVariant | null, quantity?: number) => void;
-  addItem: (product: Product, variant?: ProductVariant | null, quantity?: number) => void;
-  removeFromCart: (productId: string, variantId?: string) => void;
-  removeItem: (productId: string, variantId?: string) => void;
-  updateQuantity: (productId: string, quantity: number, variantId?: string) => void;
+  shippingFee: number;
+  shippingProgress: number;
+  total: number;
+  addToCart: (product: Product, quantity?: number, size?: string, color?: string) => void;
+  addItem: (product: Product, quantity?: number, size?: string, color?: string) => void;
+  removeFromCart: (itemId: string) => void;
+  removeItem: (itemId: string) => void;
+  updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
-  openDrawer: () => void;
-  closeDrawer: () => void;
-  toggleDrawer: () => void;
+  getItemCount: () => number;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
+const STORAGE_KEY = "nddn-cart";
 
-const getItemKey = (productId: string, variantId?: string) => `${productId}::${variantId ?? 'default'}`;
+const safeNumber = (value: unknown, fallback = 0) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
+const itemKey = (productId: string, size?: string, color?: string) => `${productId}::${size ?? ""}::${color ?? ""}`;
 
-const getVariantLabel = (variant?: ProductVariant | null) => variant?.label ?? 'Default';
-
-export function CartProvider({ children }: { children?: React.ReactNode } = {}) {
+export function CartProvider({ children }: { children?: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
-    [items],
-  );
-
-  const bagCount = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity, 0),
-    [items],
-  );
-
-  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
-  const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
-  const toggleDrawer = useCallback(() => setIsDrawerOpen((prev) => !prev), []);
-
-  const addToCart = useCallback(
-    (product: Product, variant?: ProductVariant | null, quantity = 1) => {
-      if (!product?.id) return;
-      const safeQuantity = Math.max(1, quantity);
-      const variantId = variant?.id;
-      const key = getItemKey(product.id, variantId);
-      const image = product.images?.[0]?.src ?? '';
-      const price = variant?.price ?? product.price ?? 0;
-      const stock = variant?.stock ?? product.stock ?? 0;
-
-      setItems((current) => {
-        const existing = current.find((item) => getItemKey(item.productId, item.id) === key);
-        if (existing) {
-          return current.map((item) =>
-            getItemKey(item.productId, item.id) === key
-              ? { ...item, quantity: Math.min((item.quantity ?? 0) + safeQuantity, stock > 0 ? stock : item.quantity + safeQuantity) }
-              : item,
-          );
-        }
-        return [
-          ...current,
-          {
-            id: variantId ?? 'default',
-            productId: product.id,
-            name: product.name ?? 'Product',
-            price,
-            currency: product.currency ?? 'INR',
-            quantity: Math.min(safeQuantity, stock > 0 ? stock : safeQuantity),
-            image,
-            size: variant?.size,
-            color: variant?.color,
-            stock,
-          },
-        ];
-      });
-
-      toast.success(`${product.name ?? 'Item'} added to bag${variant ? ` · ${getVariantLabel(variant)}` : ''}`);
-      setIsDrawerOpen(true);
-    },
-    [],
-  );
-
-  const removeFromCart = useCallback((productId: string, variantId?: string) => {
-    const key = getItemKey(productId, variantId);
-    setItems((current) => current.filter((item) => getItemKey(item.productId, item.id) !== key));
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
+      setItems(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setItems([]);
+    }
   }, []);
 
-  const updateQuantity = useCallback((productId: string, quantity: number, variantId?: string) => {
-    const key = getItemKey(productId, variantId);
-    const nextQuantity = Math.max(0, quantity);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {}
+  }, [items]);
+
+  const addToCart = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
+    if (!product?.id) return;
+    const qty = Math.max(1, Math.floor(safeNumber(quantity, 1)));
+    setItems((current) => {
+      const existingIndex = current.findIndex((item) => itemKey(item.productId, item.size, item.color) === itemKey(product.id, size, color));
+      if (existingIndex >= 0) {
+        return current.map((item, index) =>
+          index === existingIndex
+            ? { ...item, quantity: Math.max(1, Math.min((item.quantity ?? 1) + qty, product?.inStock === false ? item.quantity ?? 1 : 99)) }
+            : item,
+        );
+      }
+      const nextItem: CartItem = {
+        id: crypto.randomUUID(),
+        productId: product.id,
+        product,
+        quantity: Math.max(1, Math.min(qty, product?.inStock === false ? 1 : 99)),
+        size,
+        color,
+        price: safeNumber(product?.price, 0),
+        addedAt: new Date().toISOString(),
+      };
+      return [...current, nextItem];
+    });
+    setIsOpen(true);
+  }, []);
+
+  const removeFromCart = useCallback((itemId: string) => {
+    if (!itemId) return;
+    setItems((current) => current.filter((item) => item.id !== itemId));
+  }, []);
+
+  const updateQuantity = useCallback((itemId: string, quantity: number) => {
+    const nextQuantity = Math.max(1, Math.floor(safeNumber(quantity, 1)));
     setItems((current) =>
-      current
-        .map((item) => {
-          if (getItemKey(item.productId, item.id) !== key) return item;
-          if (nextQuantity === 0) return item;
-          const maxQty = item.stock && item.stock > 0 ? item.stock : nextQuantity;
-          return { ...item, quantity: Math.min(nextQuantity, maxQty) };
-        })
-        .filter((item) => item.quantity > 0),
+      current.map((item) => {
+        if (item.id !== itemId) return item;
+        const maxStock = item?.product?.inStock === false ? item.quantity ?? 1 : 99;
+        return { ...item, quantity: Math.min(nextQuantity, maxStock) };
+      }),
     );
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
 
+  const subtotal = useMemo(
+    () => items.reduce((sum, item) => sum + safeNumber(item?.price, 0) * Math.max(1, safeNumber(item?.quantity, 1)), 0),
+    [items],
+  );
+
+  const shippingFee = useMemo(() => (subtotal > 15000 ? 0 : subtotal > 0 ? 499 : 0), [subtotal]);
+  const total = useMemo(() => subtotal + shippingFee, [subtotal, shippingFee]);
+  const shippingProgress = useMemo(() => Math.min(100, Math.round((subtotal / 15000) * 100)), [subtotal]);
+  const getItemCount = useCallback(() => items.reduce((count, item) => count + Math.max(1, safeNumber(item?.quantity, 1)), 0), [items]);
+
   const value = useMemo<CartContextValue>(
     () => ({
       items,
-      isDrawerOpen,
+      isOpen,
+      setIsOpen,
       subtotal,
-      bagCount,
+      shippingFee,
+      shippingProgress,
+      total,
       addToCart,
       addItem: addToCart,
       removeFromCart,
       removeItem: removeFromCart,
       updateQuantity,
       clearCart,
-      openDrawer,
-      closeDrawer,
-      toggleDrawer,
+      getItemCount,
     }),
-    [items, isDrawerOpen, subtotal, bagCount, addToCart, removeFromCart, updateQuantity, clearCart, openDrawer, closeDrawer, toggleDrawer],
+    [items, isOpen, subtotal, shippingFee, shippingProgress, total, addToCart, removeFromCart, updateQuantity, clearCart, getItemCount],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -130,8 +124,12 @@ export function CartProvider({ children }: { children?: React.ReactNode } = {}) 
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within a CartProvider');
+  if (!context) throw new Error("useCart must be used within a CartProvider");
   return context;
 }
 
-export default CartProvider;
+export default CartContext;
+export { CartContext };
+
+// Auto-synthesized missing component export
+export const CartContents: any = (props: any) => props?.children || null;

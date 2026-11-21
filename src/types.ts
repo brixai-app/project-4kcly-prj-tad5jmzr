@@ -1,177 +1,142 @@
-export type CurrencyCode = 'INR' | 'USD' | 'EUR';
+export type ID = string;
 
 export interface ProductImage {
-  src: string;
-  alt: string;
+  url: string;
+  alt?: string;
   width?: number;
   height?: number;
 }
 
-export interface ProductVariant {
-  id: string;
-  label: string;
-  sku?: string;
-  price?: number;
-  stock?: number;
-  color?: string;
-  size?: string;
-}
-
 export interface Product {
-  id: string;
+  id: ID;
   slug: string;
   name: string;
-  description?: string;
+  description: string;
+  price: number;
+  currency?: string;
   category: string;
   collection?: string;
-  price: number;
-  compareAtPrice?: number;
-  currency?: CurrencyCode;
-  stock: number;
+  material?: string;
+  color?: string;
+  sizes?: string[];
+  images: ProductImage[];
+  featured?: boolean;
+  inStock?: boolean;
   rating?: number;
   reviewCount?: number;
-  featured?: boolean;
-  images: ProductImage[];
-  variants?: ProductVariant[];
-  tags?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface ReviewAuthor {
-  id?: string;
-  name: string;
-  avatarUrl?: string;
-}
-
 export interface Review {
-  id: string;
-  productId: string;
-  author: ReviewAuthor;
+  id: ID;
+  productId: ID;
+  userId: ID;
+  userName: string;
   rating: number;
   title?: string;
   body: string;
-  createdAt: string;
-  verifiedPurchase?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export interface Address {
+export interface CartItem {
+  id: ID;
+  productId: ID;
+  product?: Product;
+  quantity: number;
+  size?: string;
+  color?: string;
+  price: number;
+  addedAt?: string;
+}
+
+export interface ShippingAddress {
   fullName: string;
+  email?: string;
+  phone?: string;
   line1: string;
   line2?: string;
   city: string;
   state?: string;
   postalCode: string;
   country: string;
-  phone?: string;
-}
-
-export interface CartItem {
-  id: string;
-  productId: string;
-  name: string;
-  price: number;
-  currency?: CurrencyCode;
-  quantity: number;
-  image: string;
-  size?: string;
-  color?: string;
-  stock?: number;
-}
-
-export interface OrderItem {
-  id: string;
-  productId: string;
-  name: string;
-  price: number;
-  quantity: number;
-  image: string;
-  size?: string;
-  color?: string;
 }
 
 export interface Order {
-  id: string;
-  userId?: string;
-  items: OrderItem[];
+  id: ID;
+  userId?: ID;
+  items: CartItem[];
+  shippingAddress: ShippingAddress;
   subtotal: number;
-  shipping: number;
-  tax?: number;
+  shippingFee: number;
+  tax: number;
   total: number;
-  currency?: CurrencyCode;
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  shippingAddress: Address;
-  billingAddress?: Address;
-  createdAt: string;
+  currency?: string;
+  status: "pending" | "paid" | "processing" | "shipped" | "delivered" | "cancelled";
+  paymentMethod?: string;
+  createdAt?: string;
   updatedAt?: string;
-  notes?: string;
 }
 
-export interface CheckoutFormValues {
+export interface UserProfile {
+  id: ID;
+  name: string;
   email: string;
+  avatarUrl?: string;
   phone?: string;
-  shippingAddress: Address;
-  billingAddress?: Address;
-  paymentMethod: 'card' | 'upi' | 'cod';
-  saveAddress?: boolean;
-  agreeToTerms: boolean;
-}
-
-export interface FilterState {
-  query: string;
-  categories: string[];
-  collections: string[];
-  priceMin?: number;
-  priceMax?: number;
-  inStockOnly: boolean;
-  featuredOnly: boolean;
-  sortBy: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating';
+  role?: "customer" | "admin";
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ApiResponse<T> {
   data: T;
   message?: string;
-  success: boolean;
+  success?: boolean;
 }
 
-export interface ProductsResponse extends ApiResponse<Product[]> {}
-export interface ProductResponse extends ApiResponse<Product> {}
-export interface ReviewsResponse extends ApiResponse<Review[]> {}
-export interface OrdersResponse extends ApiResponse<Order[]> {}
-
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  image?: string;
-  role?: 'customer' | 'admin';
-  createdAt?: string;
+export interface PaginatedResponse<T> {
+  data: T[];
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
 }
 
-export interface SessionPayload {
-  user: AuthUser | null;
-  expiresAt?: string;
+export interface ProductListParams {
+  query?: string;
+  category?: string;
+  collection?: string;
+  sort?: "featured" | "newest" | "price-asc" | "price-desc";
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateReviewPayload {
+  productId: ID;
+  rating: number;
+  title?: string;
+  body: string;
 }
 
 export interface CreateOrderPayload {
-  items: OrderItem[];
-  shippingAddress: Address;
-  billingAddress?: Address;
+  items: CartItem[];
+  shippingAddress: ShippingAddress;
+  paymentMethod?: string;
+}
+
+export interface AuthPayload {
   email: string;
-  phone?: string;
-  paymentMethod: CheckoutFormValues['paymentMethod'];
-  notes?: string;
+  password: string;
+  name?: string;
 }
 
-export interface UpdateCartItemPayload {
-  productId: string;
-  quantity: number;
-  size?: string;
-  color?: string;
+export interface SessionUser {
+  id: ID;
+  name?: string;
+  email?: string;
+  image?: string;
 }
 
-export interface StockMap {
-  [productId: string]: number;
-}
-
-export default {};
+export default {} as const;

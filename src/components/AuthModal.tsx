@@ -1,198 +1,172 @@
 import React, { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, Lock, User, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-type Mode = 'sign-in' | 'sign-up' | 'reset';
-
-type AuthValues = {
-  name: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-};
-
-type AuthModalProps = {
+export interface AuthModalProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  initialMode?: Mode;
-  onSubmit?: (payload: { mode: Mode; values: AuthValues }) => Promise<void> | void;
+  defaultMode?: 'sign-in' | 'sign-up';
+  trigger?: React.ReactNode;
+}
+
+type Mode = 'sign-in' | 'sign-up';
+
+const authClient = {
+  async signIn(email: string, password: string) {
+    const res = await fetch('/api/auth/sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Sign in failed');
+    return res.json().catch(() => null);
+  },
+  async signUp(name: string, email: string, password: string) {
+    const res = await fetch('/api/auth/sign-up', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.message ?? 'Sign up failed');
+    return res.json().catch(() => null);
+  },
 };
 
-const defaultValues: AuthValues = { name: '', email: '', password: '', confirmPassword: '' };
-
-const passwordPolicy = (password: string) => ({
-  length: password.length >= 8,
-  upper: /[A-Z]/.test(password),
-  lower: /[a-z]/.test(password),
-  number: /\d/.test(password),
-  special: /[^A-Za-z0-9]/.test(password),
-});
-
-export function AuthModal({ open = false, onOpenChange = () => {}, initialMode = 'sign-in', onSubmit = async () => {} }: AuthModalProps = {}) {
-  const [mode, setMode] = useState<Mode>(initialMode);
-  const [values, setValues] = useState<AuthValues>(defaultValues);
-  const [errors, setErrors] = useState<Partial<Record<keyof AuthValues, string>>>({});
-  const [pending, setPending] = useState(false);
+export function AuthModal({ open = false, onOpenChange, defaultMode = 'sign-in', trigger = null }: AuthModalProps) {
+  const [mode, setMode] = useState<Mode>(defaultMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const policy = useMemo(() => passwordPolicy(values.password ?? ''), [values.password]);
+  const strength = useMemo(() => {
+    let score = 0;
+    if (password.length >= 8) score += 1;
+    if (/[A-Z]/.test(password)) score += 1;
+    if (/[0-9]/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password)) score += 1;
+    return score;
+  }, [password]);
 
-  const resetState = () => {
-    setValues(defaultValues);
-    setErrors({});
-    setPending(false);
+  const strengthLabel = ['Weak', 'Fair', 'Good', 'Strong'][Math.max(0, strength - 1)] ?? 'Weak';
+
+  const reset = () => {
+    setName('');
+    setEmail('');
+    setPassword('');
     setShowPassword(false);
-  };
-
-  const validate = () => {
-    const next: Partial<Record<keyof AuthValues, string>> = {};
-    const email = values.email?.trim() ?? '';
-    if (!email) next.email = 'Email is required.';
-    else if (!/^\S+@\S+\.\S+$/.test(email)) next.email = 'Enter a valid email address.';
-    if (mode !== 'reset') {
-      if (mode === 'sign-up' && !(values.name?.trim() ?? '')) next.name = 'Name is required.';
-      if (!(values.password?.trim() ?? '')) next.password = 'Password is required.';
-      else if (!policy.length || !policy.upper || !policy.lower || !policy.number || !policy.special) next.password = 'Password does not meet policy requirements.';
-      if (mode === 'sign-up' && values.password !== values.confirmPassword) next.confirmPassword = 'Passwords do not match.';
-    }
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    setLoading(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
-    setPending(true);
+    if (!email.trim() || !password.trim()) {
+      toast.error('Please enter your email and password.');
+      return;
+    }
+    if (mode === 'sign-up' && name.trim().length < 2) {
+      toast.error('Please enter your full name.');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters.');
+      return;
+    }
+    setLoading(true);
     try {
-      await onSubmit({ mode, values });
-      toast.success(mode === 'reset' ? 'Reset link sent.' : mode === 'sign-up' ? 'Account created.' : 'Signed in successfully.');
-      onOpenChange(false);
-      resetState();
-    } catch (error) {
-      toast.error((error as Error)?.message ?? 'Authentication failed.');
+      if (mode === 'sign-in') await authClient.signIn(email.trim(), password);
+      else await authClient.signUp(name.trim(), email.trim(), password);
+      toast.success(mode === 'sign-in' ? 'Welcome back.' : 'Account created successfully.');
+      onOpenChange?.(false);
+      reset();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Authentication failed.');
     } finally {
-      setPending(false);
+      setLoading(false);
     }
   };
 
-  const switchMode = (next: Mode) => {
-    setMode(next);
-    setErrors({});
-  };
-
-  const inputBase = 'w-full rounded-sm border border-[#C9BFB1] bg-[#FFFCF7] px-3 py-3 text-sm text-[#2E2B28] outline-none transition focus:border-[#8B0000]';
-  const labelBase = 'mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-[#71695F]';
-
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) resetState(); }}>
+    <Dialog.Root open={open} onOpenChange={(next) => { onOpenChange?.(next); if (!next) reset(); }}>
+      {trigger ? <Dialog.Trigger asChild>{trigger}</Dialog.Trigger> : null}
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 focus:outline-none">
-          <motion.div initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.98 }} transition={{ duration: 0.28 }} className="overflow-hidden border border-[#C9BFB1] bg-[#F5F1EB] text-[#2E2B28] shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
-            <div className="flex items-start justify-between border-b border-[#C9BFB1] px-5 py-4">
-              <div className="min-w-0">
-                <Dialog.Title className="font-['Playfair_Display'] text-2xl font-medium tracking-tight">
-                  {mode === 'sign-up' ? 'Create account' : mode === 'reset' ? 'Reset password' : 'Welcome back'}
-                </Dialog.Title>
-                <Dialog.Description className="mt-1 text-sm text-[#71695F]">
-                  {mode === 'sign-up' ? 'Join the NDDN Store private client list.' : mode === 'reset' ? 'We will send a secure reset link to your inbox.' : 'Sign in to manage orders, wishlist, and checkout.'}
-                </Dialog.Description>
-              </div>
-              <Dialog.Close className="rounded-none border border-[#C9BFB1] p-2 text-[#2E2B28] transition hover:border-[#8B0000] hover:text-[#8B0000]">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 border border-[#C9BDB2] bg-[#F9F7F6] p-5 text-[#2B2B2B] shadow-[0_24px_80px_rgba(0,0,0,0.18)] outline-none">
+          <div className="flex items-start justify-between gap-4 border-b border-[#C9BDB2] pb-4">
+            <div className="min-w-0">
+              <p className="font-sans text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6E655F]">Account</p>
+              <Dialog.Title className="mt-2 font-['Playfair_Display'] text-3xl font-normal tracking-tight">
+                {mode === 'sign-in' ? 'Sign in' : 'Create account'}
+              </Dialog.Title>
+            </div>
+            <Dialog.Close asChild>
+              <button type="button" className="inline-flex h-9 w-9 items-center justify-center border border-[#C9BDB2] text-[#2B2B2B] transition-colors hover:bg-[#EFEAE5]" aria-label="Close">
                 <X className="h-4 w-4" />
-              </Dialog.Close>
-            </div>
-
-            <div className="border-b border-[#C9BFB1] px-5 py-3">
-              <div className="grid grid-cols-3 gap-2">
-                {(['sign-in', 'sign-up', 'reset'] as Mode[]).map((item) => (
-                  <button key={item} type="button" onClick={() => switchMode(item)} className={cn('border px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] transition', mode === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BFB1] bg-transparent text-[#71695F] hover:border-[#8B0000] hover:text-[#8B0000]')}>
-                    {item === 'sign-in' ? 'Sign in' : item === 'sign-up' ? 'Sign up' : 'Reset'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
-              {mode === 'sign-up' && (
-                <div>
-                  <label className={labelBase}>Name</label>
-                  <div className="relative">
-                    <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71695F]" />
-                    <input value={values.name} onChange={(e) => setValues((p) => ({ ...p, name: e.target.value }))} className={cn(inputBase, 'pl-10')} placeholder="Your full name" autoComplete="name" />
-                  </div>
-                  {errors.name ? <p className="mt-1 text-xs text-[#8B0000]">{errors.name}</p> : null}
-                </div>
-              )}
-
-              <div>
-                <label className={labelBase}>Email</label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71695F]" />
-                  <input value={values.email} onChange={(e) => setValues((p) => ({ ...p, email: e.target.value }))} className={cn(inputBase, 'pl-10')} placeholder="name@example.com" autoComplete="email" />
-                </div>
-                {errors.email ? <p className="mt-1 text-xs text-[#8B0000]">{errors.email}</p> : null}
-              </div>
-
-              {mode !== 'reset' && (
-                <div>
-                  <label className={labelBase}>Password</label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71695F]" />
-                    <input type={showPassword ? 'text' : 'password'} value={values.password} onChange={(e) => setValues((p) => ({ ...p, password: e.target.value }))} className={cn(inputBase, 'pl-10 pr-10')} placeholder="Enter password" autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'} />
-                    <button type="button" onClick={() => setShowPassword((p) => !p)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#71695F] transition hover:text-[#8B0000]">
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  {errors.password ? <p className="mt-1 text-xs text-[#8B0000]">{errors.password}</p> : null}
-                  {mode === 'sign-up' ? (
-                    <div className="mt-3 grid gap-2 text-xs text-[#71695F]">
-                      {[
-                        ['At least 8 characters', policy.length],
-                        ['One uppercase letter', policy.upper],
-                        ['One lowercase letter', policy.lower],
-                        ['One number', policy.number],
-                        ['One special character', policy.special],
-                      ].map(([label, ok]) => (
-                        <div key={label as string} className="flex items-center gap-2">
-                          <CheckCircle2 className={cn('h-3.5 w-3.5', ok ? 'text-[#8B0000]' : 'text-[#C9BFB1]')} />
-                          <span>{label as string}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {mode === 'sign-up' && (
-                <div>
-                  <label className={labelBase}>Confirm password</label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71695F]" />
-                    <input type={showPassword ? 'text' : 'password'} value={values.confirmPassword} onChange={(e) => setValues((p) => ({ ...p, confirmPassword: e.target.value }))} className={cn(inputBase, 'pl-10')} placeholder="Repeat password" autoComplete="new-password" />
-                  </div>
-                  {errors.confirmPassword ? <p className="mt-1 text-xs text-[#8B0000]">{errors.confirmPassword}</p> : null}
-                </div>
-              )}
-
-              <button type="submit" disabled={pending} className="flex w-full items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-70">
-                {pending ? 'Please wait' : mode === 'reset' ? 'Send reset link' : mode === 'sign-up' ? 'Create account' : 'Sign in'}
-                <ArrowRight className="h-4 w-4" />
               </button>
+            </Dialog.Close>
+          </div>
 
-              <div className="flex items-center justify-between text-xs text-[#71695F]">
-                <button type="button" onClick={() => switchMode(mode === 'sign-in' ? 'reset' : 'sign-in')} className="font-semibold uppercase tracking-[0.18em] text-[#8B0000] transition hover:text-[#650000]">
-                  {mode === 'sign-in' ? 'Forgot password?' : 'Back to sign in'}
-                </button>
-                <button type="button" onClick={() => switchMode(mode === 'sign-up' ? 'sign-in' : 'sign-up')} className="font-semibold uppercase tracking-[0.18em] text-[#8B0000] transition hover:text-[#650000]">
-                  {mode === 'sign-up' ? 'Have an account?' : 'Create account'}
+          <div className="mt-4 flex gap-2 border-b border-[#C9BDB2]">
+            {(['sign-in', 'sign-up'] as Mode[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setMode(item)}
+                className={cn(
+                  'border-b-2 px-0 py-2 font-sans text-xs font-semibold uppercase tracking-[0.24em] transition-colors',
+                  mode === item ? 'border-[#B11226] text-[#2B2B2B]' : 'border-transparent text-[#6E655F] hover:text-[#2B2B2B]'
+                )}
+              >
+                {item === 'sign-in' ? 'Sign in' : 'Sign up'}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            {mode === 'sign-up' && (
+              <label className="block">
+                <span className="mb-2 block font-sans text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Full name</span>
+                <div className="flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2">
+                  <User className="h-4 w-4 shrink-0 text-[#6E655F]" />
+                  <input value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-transparent font-serif text-sm text-[#2B2B2B] outline-none placeholder:text-[#6E655F]/70" placeholder="Your name" autoComplete="name" />
+                </div>
+              </label>
+            )}
+
+            <label className="block">
+              <span className="mb-2 block font-sans text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Email</span>
+              <div className="flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2">
+                <Mail className="h-4 w-4 shrink-0 text-[#6E655F]" />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-transparent font-serif text-sm text-[#2B2B2B] outline-none placeholder:text-[#6E655F]/70" placeholder="you@example.com" autoComplete="email" inputMode="email" />
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block font-sans text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Password</span>
+              <div className="flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2">
+                <Lock className="h-4 w-4 shrink-0 text-[#6E655F]" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-transparent font-serif text-sm text-[#2B2B2B] outline-none placeholder:text-[#6E655F]/70" placeholder="••••••••" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'} />
+                <button type="button" onClick={() => setShowPassword((v) => !v)} className="inline-flex h-8 w-8 items-center justify-center text-[#6E655F] transition-colors hover:text-[#2B2B2B]" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-            </form>
-          </motion.div>
+              {mode === 'sign-up' && (
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="h-1 flex-1 overflow-hidden bg-[#EFEAE5]">
+                    <div className={cn('h-full transition-all', strength <= 1 ? 'w-1/4 bg-[#B11226]' : strength === 2 ? 'w-2/4 bg-[#B11226]' : strength === 3 ? 'w-3/4 bg-[#B11226]' : 'w-full bg-[#B11226]')} />
+                  </div>
+                  <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655F]">{strengthLabel}</span>
+                </div>
+              )}
+            </label>
+
+            <button type="submit" disabled={loading} className="inline-flex w-full items-center justify-center gap-2 bg-[#B11226] px-4 py-3 font-sans text-xs font-semibold uppercase tracking-[0.24em] text-white transition-colors hover:bg-[#8F0E1F] disabled:cursor-not-allowed disabled:opacity-70">
+              {loading ? 'Please wait' : mode === 'sign-in' ? 'Sign in' : 'Create account'}
+            </button>
+          </form>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

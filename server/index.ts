@@ -1,101 +1,127 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import auth from './auth';
-import { initDb, inspectTables, getTableData } from './db';
+import { db, initializeDatabase, inspectTables, getTableData } from './db';
 
-const app = new Hono();
-const json = (success: boolean, data: unknown, message?: string, status = 200) => app.json({ success, data, message }, status);
-const err = (message: string, status = 400) => app.json({ success: false, data: null, message }, status);
-const isTableName = (v: string) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v ?? '');
-const num = (v: string | null, d: number) => {
-  const n = Number(v ?? '');
+const index = new Hono();
+
+const json = (data: unknown, success = true, message?: string) => ({ success, message, data });
+const num = (v: unknown, d = 0) => {
+  const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : d;
 };
-const parseJson = async <T,>(c: any): Promise<T | null> => {
-  try {
-    return (await c.req.json()) as T;
-  } catch {
-    return null;
-  }
-};
+const str = (v: unknown, d = '') => (typeof v === 'string' ? v.trim() : d);
+const safeTable = (t: string) => /^[a-zA-Z0-9_]+$/.test(t) ? t : '';
+const now = () => new Date().toISOString();
 
-initDb();
+initializeDatabase();
 
-app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
-app.all('/api/auth/*', (c) => typeof auth !== 'undefined' && auth && auth.handler ? auth.handler(c.req.raw) : (typeof auth === 'function' ? auth(c.req.raw) : c.json({ error: 'Auth handler unavailable' }, 500)));
+index.use('*', cors({ origin: '*', allowHeaders: ['Content-Type', 'Authorization'], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+index.all('/api/auth/*', (c) => typeof auth !== 'undefined' && auth && auth.handler ? auth.handler(c.req.raw) : (typeof auth === 'function' ? auth(c.req.raw) : c.json({ error: 'Auth handler unavailable' }, 500)));
 
-app.get('/api/health', (c) => json(true, { ok: true, timestamp: new Date().toISOString() }, 'ok'));
+index.get('/api/health', (c) => c.json(json({ ok: true, time: now() }, true, 'healthy')));
 
-app.get('/api/products', async (c) => {
-  const q = (c.req.query('q') ?? '').trim().toLowerCase();
-  const category = (c.req.query('category') ?? '').trim().toLowerCase();
-  const collection = (c.req.query('collection') ?? '').trim().toLowerCase();
-  const sortBy = c.req.query('sortBy') ?? 'featured';
+index.get('/api/products', async (c) => {
+  const q = str(c.req.query('query')).toLowerCase();
+  const category = str(c.req.query('category')).toLowerCase();
+  const collection = str(c.req.query('collection')).toLowerCase();
+  const sort = str(c.req.query('sort'), 'featured');
   const page = Math.max(1, num(c.req.query('page'), 1));
   const limit = Math.min(100, Math.max(1, num(c.req.query('limit'), 12)));
   const offset = (page - 1) * limit;
-  const rows = await getTableData('products');
-  const items = (rows ?? []).filter((p: any) => {
-    const hay = `${p?.name ?? ''} ${p?.description ?? ''} ${p?.category ?? ''} ${p?.collection ?? ''} ${(p?.tags ?? []).join(' ')}`.toLowerCase();
-    return (!q || hay.includes(q)) && (!category || `${p?.category ?? ''}`.toLowerCase() === category) && (!collection || `${p?.collection ?? ''}`.toLowerCase() === collection);
-  }).sort((a: any, b: any) => {
-    if (sortBy === 'price-asc') return (a?.price ?? 0) - (b?.price ?? 0);
-    if (sortBy === 'price-desc') return (b?.price ?? 0) - (a?.price ?? 0);
-    if (sortBy === 'rating') return (b?.rating ?? 0) - (a?.rating ?? 0);
-    if (sortBy === 'newest') return new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime();
-    return Number(!!b?.featured) - Number(!!a?.featured) || new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime();
+  const rows = await db.query('SELECT * FROM products ORDER BY createdAt DESC');
+  let items = (rows?.rows ?? []).map((r: any) => ({ ...r, images: JSON.parse(r.images ?? '[]'), sizes: JSON.parse(r.sizes ?? '[]') }));
+  if (q) items = items.filter((p: any) => `${p.name ?? ''} ${p.description ?? ''} ${p.category ?? ''} ${p.collection ?? ''}`.toLowerCase().includes(q));
+  if (category) items = items.filter((p: any) => str(p.category).toLowerCase() === category);
+  if (collection) items = items.filter((p: any) => str(p.collection).toLowerCase() === collection);
+  items.sort((a: any, b: any) => {
+    if (sort === 'price-asc') return num(a.price) - num(b.price);
+    if (sort === 'price-desc') return num(b.price) - num(a.price);
+    if (sort === 'newest') return String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''));
+    return Number(!!b.featured) - Number(!!a.featured) || String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''));
   });
-  return json(true, { items: items.slice(offset, offset + limit), page, limit, total: items.length }, 'products');
+  const total = items.length;
+  return c.json(json({ data: items.slice(offset, offset + limit), page, limit, total, hasMore: offset + limit < total }, true, 'products'));
 });
 
-app.get('/api/products/:slug', async (c) => {
-  const slug = c.req.param('slug') ?? '';
-  const rows = await getTableData('products');
-  const product = (rows ?? []).find((p: any) => `${p?.slug ?? ''}` === slug);
-  return product ? json(true, product, 'product') : err('Product not found', 404);
+index.get('/api/products/:slug', async (c) => {
+  const slug = str(c.req.param('slug'));
+  const row = await db.query('SELECT * FROM products WHERE slug = ? LIMIT 1', [slug]);
+  const product = row?.rows?.[0] ? { ...row.rows[0], images: JSON.parse((row.rows[0] as any).images ?? '[]'), sizes: JSON.parse((row.rows[0] as any).sizes ?? '[]') } : null;
+  if (!product) return c.json(json(null, false, 'Product not found'), 404);
+  const reviews = await db.query('SELECT * FROM reviews WHERE productId = ? ORDER BY createdAt DESC', [product.id]);
+  return c.json(json({ product, reviews: reviews?.rows ?? [] }, true, 'product'));
 });
 
-app.get('/api/products/:productId/reviews', async (c) => {
-  const productId = c.req.param('productId') ?? '';
-  const rows = await getTableData('reviews');
-  const reviews = (rows ?? []).filter((r: any) => `${r?.productId ?? ''}` === productId).sort((a: any, b: any) => new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime());
-  return json(true, reviews, 'reviews');
+index.post('/api/reviews', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const productId = str(body?.productId);
+  const rating = Math.max(1, Math.min(5, Math.round(num(body?.rating, 0))));
+  const title = str(body?.title);
+  const reviewBody = str(body?.body);
+  const userName = str(body?.userName, 'Guest');
+  const userId = str(body?.userId, 'guest');
+  if (!productId || !reviewBody || !rating) return c.json(json(null, false, 'Invalid review payload'), 400);
+  const id = crypto.randomUUID();
+  await db.query('INSERT INTO reviews (id, productId, userId, userName, rating, title, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, userId, userName, rating, title || null, reviewBody, now(), now()]);
+  return c.json(json({ id, productId, userId, userName, rating, title, body: reviewBody }, true, 'Review created'), 201);
 });
 
-app.get('/api/orders', async (c) => {
-  const userId = c.req.query('userId') ?? '';
-  const rows = await getTableData('orders');
-  const orders = userId ? (rows ?? []).filter((o: any) => `${o?.userId ?? ''}` === userId) : (rows ?? []);
-  return json(true, orders, 'orders');
+index.post('/api/orders', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const items = Array.isArray(body?.items) ? body.items : [];
+  const shippingAddress = body?.shippingAddress ?? {};
+  const fullName = str(shippingAddress?.fullName);
+  const line1 = str(shippingAddress?.line1);
+  const city = str(shippingAddress?.city);
+  const postalCode = str(shippingAddress?.postalCode);
+  const country = str(shippingAddress?.country);
+  if (!items.length || !fullName || !line1 || !city || !postalCode || !country) return c.json(json(null, false, 'Invalid order payload'), 400);
+  const subtotal = items.reduce((sum: number, item: any) => sum + num(item?.price) * Math.max(1, num(item?.quantity, 1)), 0);
+  const shippingFee = subtotal > 15000 ? 0 : 499;
+  const tax = Math.round(subtotal * 0.05);
+  const total = subtotal + shippingFee + tax;
+  const id = crypto.randomUUID();
+  await db.query('INSERT INTO orders (id, userId, items, shippingAddress, subtotal, shippingFee, tax, total, currency, status, paymentMethod, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, str(body?.userId) || null, JSON.stringify(items), JSON.stringify(shippingAddress), subtotal, shippingFee, tax, total, str(body?.currency, 'INR'), 'pending', str(body?.paymentMethod, 'card') || null, now(), now()]);
+  return c.json(json({ id, subtotal, shippingFee, tax, total, status: 'pending' }, true, 'Order created'), 201);
 });
 
-app.post('/api/orders', async (c) => {
-  const body = await parseJson<any>(c);
-  if (!body?.items?.length || !body?.shippingAddress?.fullName || !body?.shippingAddress?.line1 || !body?.shippingAddress?.city || !body?.shippingAddress?.postalCode || !body?.shippingAddress?.country || !body?.email || !body?.paymentMethod) return err('Invalid order payload', 422);
-  return json(true, { id: crypto.randomUUID(), ...body, status: 'pending', createdAt: new Date().toISOString() }, 'order created', 201);
+index.get('/api/orders', async (c) => {
+  const userId = str(c.req.query('userId'));
+  const rows = await db.query(userId ? 'SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC' : 'SELECT * FROM orders ORDER BY createdAt DESC', userId ? [userId] : []);
+  const orders = (rows?.rows ?? []).map((r: any) => ({ ...r, items: JSON.parse(r.items ?? '[]'), shippingAddress: JSON.parse(r.shippingAddress ?? '{}') }));
+  return c.json(json(orders, true, 'orders'));
 });
 
-app.get('/api/profile', (c) => json(true, { user: null }, 'profile'));
-app.put('/api/profile', async (c) => {
-  const body = await parseJson<any>(c);
-  if (!body) return err('Invalid profile payload', 422);
-  return json(true, { ...body, updatedAt: new Date().toISOString() }, 'profile updated');
+index.get('/api/admin/tables', (c) => c.json(json(inspectTables(), true, 'tables')));
+index.get('/api/admin/tables/:table', (c) => {
+  const table = safeTable(str(c.req.param('table')));
+  if (!table) return c.json(json(null, false, 'Invalid table name'), 400);
+  return getTableData(table).then((data) => c.json(json(data, true, 'table data')));
 });
 
-app.get('/api/address', (c) => json(true, { address: null }, 'address'));
-app.put('/api/address', async (c) => {
-  const body = await parseJson<any>(c);
-  if (!body?.fullName || !body?.line1 || !body?.city || !body?.postalCode || !body?.country) return err('Invalid address payload', 422);
-  return json(true, { ...body, updatedAt: new Date().toISOString() }, 'address updated');
+index.get('/api/cart/:userId', async (c) => {
+  const userId = str(c.req.param('userId'));
+  const rows = await db.query('SELECT * FROM cart_items WHERE userId = ? ORDER BY addedAt DESC', [userId]);
+  return c.json(json(rows?.rows ?? [], true, 'cart'));
 });
 
-app.get('/api/admin/tables', () => json(true, inspectTables(), 'tables'));
-app.get('/api/admin/tables/:tableName', async (c) => {
-  const tableName = c.req.param('tableName') ?? '';
-  if (!isTableName(tableName)) return err('Invalid table name', 400);
-  return json(true, await getTableData(tableName), 'table data');
+index.post('/api/cart', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const userId = str(body?.userId);
+  const productId = str(body?.productId);
+  const quantity = Math.max(1, num(body?.quantity, 1));
+  if (!userId || !productId) return c.json(json(null, false, 'Invalid cart payload'), 400);
+  const id = crypto.randomUUID();
+  await db.query('INSERT INTO cart_items (id, userId, productId, quantity, size, color, price, addedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, userId, productId, quantity, str(body?.size) || null, str(body?.color) || null, num(body?.price), now()]);
+  return c.json(json({ id }, true, 'Cart item added'), 201);
 });
 
-app.all('/api/*', (c) => err('Not found', 404));
+index.delete('/api/cart/:id', async (c) => {
+  const id = str(c.req.param('id'));
+  await db.query('DELETE FROM cart_items WHERE id = ?', [id]);
+  return c.json(json({ id }, true, 'Cart item removed'));
+});
 
-export default app;
+export { index };
+export default index;

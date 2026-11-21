@@ -1,150 +1,161 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Mail, MapPin, Phone, Instagram, Facebook, Twitter, Youtube, Shield, Truck, CreditCard, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Instagram, Twitter, Facebook, Youtube, Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-export function Footer({ className = '' }: { className?: string } = {}) {
+export interface FooterProps {
+  className?: string;
+}
+
+export function Footer({ className = '' }: FooterProps) {
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'success'>('idle');
+  const [submitted, setSubmitted] = useState(false);
 
   const links = useMemo(
     () => ({
-      shop: [
-        { label: 'New Arrivals', to: '/shop' },
-        { label: 'Dresses', to: '/shop?category=dresses' },
-        { label: 'Outerwear', to: '/shop?category=outerwear' },
-        { label: 'Accessories', to: '/shop?category=accessories' },
+      customerCare: [
+        { label: 'Shipping & Delivery', to: '/shipping' },
+        { label: 'Returns & Exchanges', to: '/returns' },
+        { label: 'Size Guide', to: '/size-guide' },
+        { label: 'Contact Support', to: '/contact' },
       ],
-      care: [
-        { label: 'Shipping & Delivery', to: '/shop' },
-        { label: 'Returns & Exchanges', to: '/shop' },
-        { label: 'Size Guide', to: '/shop' },
-        { label: 'Contact Support', to: '/shop' },
+      story: [
+        { label: 'About NDDN', to: '/about' },
+        { label: 'Craft & Materials', to: '/craft' },
+        { label: 'Journal', to: '/journal' },
+        { label: 'Store Locator', to: '/stores' },
       ],
       social: [
         { label: 'Instagram', href: 'https://instagram.com', icon: Instagram },
-        { label: 'Facebook', href: 'https://facebook.com', icon: Facebook },
         { label: 'Twitter', href: 'https://twitter.com', icon: Twitter },
-        { label: 'Youtube', href: 'https://youtube.com', icon: Youtube },
+        { label: 'Facebook', href: 'https://facebook.com', icon: Facebook },
+        { label: 'YouTube', href: 'https://youtube.com', icon: Youtube },
       ],
     }),
-    [],
+    []
   );
 
-  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const value = email.trim();
-    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      toast.error('Enter a valid email address.');
+    if (!value || !/^\S+@\S+\.\S+$/.test(value)) {
+      toast.error('Please enter a valid email address.');
       return;
     }
-    setStatus('success');
+    setSubmitted(true);
     setEmail('');
     toast.success('You are on the list.');
   };
 
   return (
-    <footer className={`border-t border-[#C9BFB1] bg-[#FFFCF7] text-[#2E2B28] ${className}`}>
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 md:grid-cols-12 md:px-6 lg:px-8">
-        <section className="md:col-span-4">
-          <p className="font-serif text-3xl tracking-tight">NDDN Store</p>
-          <p className="mt-4 max-w-md text-sm leading-7 text-[#71695F]">
-            An editorial boutique shaped by ivory light, deep-crimson accents, and precise tailoring. Curated drops, refined essentials, and a calm luxury experience.
-          </p>
-          <div className="mt-6 flex flex-col gap-3 text-sm text-[#71695F]">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-[#8B0000]" />
-              <span className="min-w-0 truncate">Mumbai, India</span>
+    <footer className={`border-t border-[#C9BDB2] bg-[#F9F7F6] text-[#2B2B2B] ${className}`}>
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr_0.8fr_1fr]">
+          <section className="space-y-5">
+            <div className="space-y-3">
+              <p className="font-['Playfair_Display'] text-3xl font-normal tracking-tight">NDDN Store</p>
+              <p className="max-w-md text-sm leading-7 text-[#6E655F]">
+                An editorial fashion destination shaped by warm neutrals, crimson accents, and considered silhouettes.
+              </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Phone className="h-4 w-4 text-[#8B0000]" />
-              <span className="min-w-0 truncate">+91 98765 43210</span>
+            <div className="space-y-3 text-sm text-[#6E655F]">
+              <div className="flex items-start gap-3">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#B11226]" />
+                <span className="min-w-0 break-words">Mumbai, India · Appointments and online orders worldwide</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="h-4 w-4 shrink-0 text-[#B11226]" />
+                <a className="transition-colors hover:text-[#B11226]" href="tel:+910000000000">
+                  +91 00000 00000
+                </a>
+              </div>
+              <div className="flex items-center gap-3">
+                <Mail className="h-4 w-4 shrink-0 text-[#B11226]" />
+                <a className="transition-colors hover:text-[#B11226]" href="mailto:care@nddnstore.com">
+                  care@nddnstore.com
+                </a>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Mail className="h-4 w-4 text-[#8B0000]" />
-              <span className="min-w-0 truncate">concierge@nddnstore.com</span>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="md:col-span-2">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#71695F]">Shop</h2>
-          <div className="mt-4 flex flex-col gap-2.5">
-            {links.shop.map((item) => (
-              <Link key={item.label} to={item.to} className="text-sm text-[#2E2B28] transition-colors hover:text-[#8B0000]">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </section>
+          <nav aria-label="Customer care" className="space-y-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Customer Care</h2>
+            <ul className="flex flex-col gap-2.5">
+              {links.customerCare.map((item) => (
+                <li key={item.label}>
+                  <Link className="block text-sm text-[#2B2B2B] transition-colors hover:text-[#B11226]" to={item.to}>
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-        <section className="md:col-span-2">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#71695F]">Customer Care</h2>
-          <div className="mt-4 flex flex-col gap-2.5">
-            {links.care.map((item) => (
-              <Link key={item.label} to={item.to} className="text-sm text-[#2E2B28] transition-colors hover:text-[#8B0000]">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </section>
+          <nav aria-label="Brand story" className="space-y-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Story</h2>
+            <ul className="flex flex-col gap-2.5">
+              {links.story.map((item) => (
+                <li key={item.label}>
+                  <Link className="block text-sm text-[#2B2B2B] transition-colors hover:text-[#B11226]" to={item.to}>
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-        <section className="md:col-span-4">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-[#71695F]">Newsletter</h2>
-          <p className="mt-4 max-w-md text-sm leading-7 text-[#71695F]">
-            Receive collection notes, private previews, and shipping updates. No noise, only the essentials.
-          </p>
-          <form onSubmit={submit} className="mt-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2 border border-[#C9BFB1] bg-white px-3 py-2">
-              <Mail className="h-4 w-4 shrink-0 text-[#8B0000]" />
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                placeholder="Email address"
-                className="w-full bg-transparent text-sm text-[#2E2B28] outline-none placeholder:text-[#71695F]"
-              />
-            </div>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-2 bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000]"
-            >
-              Join the list
-              <ArrowRight className="h-4 w-4" />
-            </button>
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-[#71695F]">
-              {status === 'success' ? <CheckCircle2 className="h-4 w-4 text-[#8B0000]" /> : <Shield className="h-4 w-4 text-[#8B0000]" />}
-              <span>{status === 'success' ? 'Subscribed successfully' : 'Secure signup and privacy-first updates'}</span>
-            </div>
-          </form>
-        </section>
-      </div>
-
-      <div className="border-t border-[#C9BFB1]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 text-xs uppercase tracking-[0.22em] text-[#71695F] md:flex-row md:items-center md:justify-between md:px-6 lg:px-8">
-          <p>© {new Date().getFullYear()} NDDN Store</p>
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="inline-flex items-center gap-2">
-              <Truck className="h-4 w-4 text-[#8B0000]" />
-              Fast dispatch
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-[#8B0000]" />
-              Secure checkout
-            </span>
-            <div className="flex items-center gap-3">
+          <section className="space-y-4">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655F]">Newsletter</h2>
+            <p className="text-sm leading-7 text-[#6E655F]">
+              Receive collection notes, early access, and shipping updates.
+            </p>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <div className="flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2">
+                <input
+                  aria-label="Email address"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-[#2B2B2B] outline-none placeholder:text-[#6E655F]"
+                  placeholder="Email address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <button
+                  className="inline-flex items-center gap-2 border border-[#B11226] bg-[#B11226] px-3 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#8F0E1F]"
+                  type="submit"
+                >
+                  Join <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+              {submitted ? (
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[#B11226]">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Subscription confirmed</span>
+                </div>
+              ) : null}
+            </form>
+            <div className="flex items-center gap-3 pt-2">
               {links.social.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <a key={item.label} href={item.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#2E2B28] transition-colors hover:text-[#8B0000]">
+                  <a
+                    key={item.label}
+                    aria-label={item.label}
+                    className="inline-flex h-9 w-9 items-center justify-center border border-[#C9BDB2] text-[#2B2B2B] transition-colors hover:border-[#B11226] hover:text-[#B11226]"
+                    href={item.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
                     <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
                   </a>
                 );
               })}
             </div>
-          </div>
+          </section>
+        </div>
+
+        <div className="mt-10 flex flex-col gap-3 border-t border-[#C9BDB2] pt-5 text-xs uppercase tracking-[0.22em] text-[#6E655F] sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} NDDN Store</p>
+          <p>Luxury fashion · Editorial commerce · Secure checkout</p>
         </div>
       </div>
     </footer>
