@@ -1,204 +1,138 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { CartItem, Product, ProductVariant } from '@/types';
+import { toast } from 'sonner';
+import type { CartItem, CartPayload, Product } from '@/types';
 
 type CartContextValue = {
   items: CartItem[];
-  products: Product[];
-  isDrawerOpen: boolean;
   subtotal: number;
-  shipping: number;
-  total: number;
   itemCount: number;
-  shippingProgress: number;
-  openDrawer: () => void;
-  closeDrawer: () => void;
-  toggleDrawer: () => void;
-  addToCart: (product: Product, variant?: ProductVariant | null, quantity?: number) => void;
-  addItem: (item: CartItem) => void;
-  removeFromCart: (productId: string, variantId?: string | null) => void;
-  removeItem: (productId: string, variantId?: string | null) => void;
-  updateQuantity: (productId: string, variantId: string | null | undefined, quantity: number) => void;
+  isCartOpen: boolean;
+  openCart: () => void;
+  closeCart: () => void;
+  toggleCart: () => void;
+  addItem: (product: Product, payload?: CartPayload) => void;
+  addToCart: (product: Product, payload?: CartPayload) => void;
+  removeItem: (itemId: string) => void;
+  removeFromCart: (itemId: string) => void;
+  updateQuantity: (itemId: string, quantity: number) => void;
   clearCart: () => void;
-  getItemQuantity: (productId: string, variantId?: string | null) => number;
-  getProductById: (productId: string) => Product | undefined;
+  setCartOpen: (open: boolean) => void;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
+const STORAGE_KEY = 'nddn-cart-v1';
 
-const STORAGE_KEY = 'nddn-cart-items';
-const FREE_SHIPPING_THRESHOLD = 25000;
+const safeNumber = (value: unknown, fallback = 0) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
 
-function safeNumber(value: unknown, fallback = 0) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function normalizeItem(item: CartItem): CartItem {
-  return {
-    productId: item?.productId ?? '',
-    variantId: item?.variantId ?? null,
-    name: item?.name ?? 'Untitled item',
-    image: item?.image ?? null,
-    price: safeNumber(item?.price, 0),
-    quantity: Math.max(1, Math.floor(safeNumber(item?.quantity, 1))),
-    color: item?.color ?? null,
-    size: item?.size ?? null,
-  };
-}
-
-function storageAvailable() {
-  try {
-    return typeof window !== 'undefined' && !!window.localStorage;
-  } catch {
-    return false;
-  }
-}
+const normalizeItem = (item: Partial<CartItem> & { productId?: string; name?: string; image?: string; price?: number }) => ({
+  id: item?.id ?? crypto.randomUUID(),
+  productId: item?.productId ?? '',
+  name: item?.name ?? '',
+  slug: item?.slug,
+  image: item?.image ?? '',
+  price: safeNumber(item?.price),
+  quantity: Math.max(1, Math.floor(safeNumber(item?.quantity, 1))),
+  size: item?.size,
+  color: item?.color,
+});
 
 export function CartProvider({ children }: { children?: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
-    if (!storageAvailable()) return;
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
     try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
       const parsed = JSON.parse(raw) as CartItem[];
-      setItems(Array.isArray(parsed) ? parsed.map(normalizeItem) : []);
+      if (Array.isArray(parsed)) setItems(parsed.map((item) => normalizeItem(item)));
     } catch {
-      setItems([]);
+      window.localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
 
   useEffect(() => {
-    if (!storageAvailable()) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {}
   }, [items]);
 
-  useEffect(() => {
-    let active = true;
-    fetch('/api/products')
-      .then((res) => res.json())
-      .then((json) => {
-        if (!active) return;
-        const data = (json?.data ?? json ?? []) as Product[];
-        setProducts(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        if (active) setProducts([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
-  const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
-  const toggleDrawer = useCallback(() => setIsDrawerOpen((prev) => !prev), []);
-
-  const addItem = useCallback((item: CartItem) => {
-    const next = normalizeItem(item);
-    setItems((prev) => {
-      const index = prev.findIndex((entry) => entry.productId === next.productId && (entry.variantId ?? null) === (next.variantId ?? null));
-      if (index >= 0) {
-        return prev.map((entry, i) => (i === index ? { ...entry, quantity: Math.max(1, entry.quantity + next.quantity) } : entry));
-      }
-      return [...prev, next];
-    });
-    setIsDrawerOpen(true);
-  }, []);
-
-  const addToCart = useCallback((product: Product, variant?: ProductVariant | null, quantity = 1) => {
-    const resolvedVariant = variant ?? product?.variants?.[0] ?? null;
-    addItem({
-      productId: product?.id ?? '',
-      variantId: resolvedVariant?.id ?? null,
-      name: product?.name ?? 'Untitled item',
-      image: resolvedVariant?.image ?? product?.images?.[0] ?? null,
-      price: safeNumber(resolvedVariant?.price ?? product?.price, 0),
-      quantity: Math.max(1, Math.floor(quantity)),
-      color: resolvedVariant?.color ?? null,
-      size: resolvedVariant?.size ?? null,
-    });
-  }, [addItem]);
-
-  const removeFromCart = useCallback((productId: string, variantId?: string | null) => {
-    setItems((prev) => prev.filter((item) => !(item.productId === productId && (item.variantId ?? null) === (variantId ?? null))));
-  }, []);
-
-  const removeItem = removeFromCart;
-
-  const updateQuantity = useCallback((productId: string, variantId: string | null | undefined, quantity: number) => {
-    const nextQuantity = Math.max(1, Math.floor(quantity));
-    setItems((prev) =>
-      prev
-        .map((item) =>
-          item.productId === productId && (item.variantId ?? null) === (variantId ?? null)
-            ? { ...item, quantity: nextQuantity }
-            : item,
-        )
-        .filter((item) => item.quantity > 0),
-    );
-  }, []);
-
-  const clearCart = useCallback(() => setItems([]), []);
-
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.price) * safeNumber(item?.quantity, 1), 0), [items]);
-  const shipping = useMemo(() => (subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 1200), [subtotal]);
-  const total = useMemo(() => subtotal + shipping, [subtotal, shipping]);
   const itemCount = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.quantity, 1), 0), [items]);
-  const shippingProgress = useMemo(() => Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100)), [subtotal]);
 
-  const getItemQuantity = useCallback(
-    (productId: string, variantId?: string | null) => items.find((item) => item.productId === productId && (item.variantId ?? null) === (variantId ?? null))?.quantity ?? 0,
-    [items],
-  );
+  const openCart = useCallback(() => setIsCartOpen(true), []);
+  const closeCart = useCallback(() => setIsCartOpen(false), []);
+  const toggleCart = useCallback(() => setIsCartOpen((prev) => !prev), []);
 
-  const getProductById = useCallback((productId: string) => products.find((product) => product?.id === productId), [products]);
+  const addItem = useCallback((product: Product, payload: CartPayload = {}) => {
+    if (!product?.id) return;
+    const quantity = Math.max(1, Math.floor(safeNumber(payload?.quantity, 1)));
+    const existing = items.find(
+      (item) => item?.productId === product.id && (item?.size ?? '') === (payload?.size ?? '') && (item?.color ?? '') === (payload?.color ?? '')
+    );
+    const stockLimit = Math.max(1, Math.floor(safeNumber((product as Product)?.size?.length, 99)));
+    setItems((current) => {
+      const next = [...current];
+      const index = next.findIndex(
+        (item) => item?.productId === product.id && (item?.size ?? '') === (payload?.size ?? '') && (item?.color ?? '') === (payload?.color ?? '')
+      );
+      if (index >= 0) {
+        const updatedQty = Math.min(stockLimit, safeNumber(next[index]?.quantity, 1) + quantity);
+        next[index] = { ...next[index], quantity: updatedQty };
+      } else {
+        next.unshift(
+          normalizeItem({
+            id: crypto.randomUUID(),
+            productId: product.id,
+            name: product.name,
+            slug: product.slug,
+            image: product.image,
+            price: product.price,
+            quantity: Math.min(stockLimit, quantity),
+            size: payload?.size,
+            color: payload?.color,
+          })
+        );
+      }
+      return next;
+    });
+    toast.success(existing ? 'Updated cart' : 'Added to cart');
+    openCart();
+  }, [items, openCart]);
+
+  const removeItem = useCallback((itemId: string) => {
+    setItems((current) => current.filter((item) => item?.id !== itemId));
+    toast.message('Removed from cart');
+  }, []);
+
+  const updateQuantity = useCallback((itemId: string, quantity: number) => {
+    const nextQty = Math.max(1, Math.floor(safeNumber(quantity, 1)));
+    setItems((current) => current.map((item) => (item?.id === itemId ? { ...item, quantity: nextQty } : item)));
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setItems([]);
+    toast.message('Cart cleared');
+  }, []);
 
   const value = useMemo<CartContextValue>(
     () => ({
       items,
-      products,
-      isDrawerOpen,
       subtotal,
-      shipping,
-      total,
       itemCount,
-      shippingProgress,
-      openDrawer,
-      closeDrawer,
-      toggleDrawer,
-      addToCart,
+      isCartOpen,
+      openCart,
+      closeCart,
+      toggleCart,
       addItem,
-      removeFromCart,
+      addToCart: addItem,
       removeItem,
+      removeFromCart: removeItem,
       updateQuantity,
       clearCart,
-      getItemQuantity,
-      getProductById,
+      setCartOpen: setIsCartOpen,
     }),
-    [
-      items,
-      products,
-      isDrawerOpen,
-      subtotal,
-      shipping,
-      total,
-      itemCount,
-      shippingProgress,
-      openDrawer,
-      closeDrawer,
-      toggleDrawer,
-      addToCart,
-      addItem,
-      removeFromCart,
-      removeItem,
-      updateQuantity,
-      clearCart,
-      getItemQuantity,
-      getProductById,
-    ],
+    [items, subtotal, itemCount, isCartOpen, openCart, closeCart, toggleCart, addItem, removeItem, updateQuantity, clearCart]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

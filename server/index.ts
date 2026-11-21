@@ -1,165 +1,179 @@
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import auth from "./auth";
-import { initializeDatabase, inspectTables, getTableData, db } from "./db";
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import auth from './auth';
+import { db, initializeDatabase, inspectTables, getTableData } from './db';
 
-type Env = { Variables: { user?: { id?: string; email?: string; role?: string } } };
+const index = new Hono();
 
-const index = new Hono<Env>();
-initializeDatabase();
+const json = (data: unknown, status = 200) => index.json(data, status);
 
-index.use(
-  "/api/*",
-  cors({
-    origin: "*",
-    allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
-    maxAge: 600,
-  })
-);
+const parseBody = async (c: any) => {
+  try {
+    return await c.req.json();
+  } catch {
+    return {};
+  }
+};
 
-index.all('/api/auth/*', (c) => typeof auth !== 'undefined' && auth && auth.handler ? auth.handler(c.req.raw) : (typeof auth === 'function' ? auth(c.req.raw) : c.json({ error: 'Auth handler unavailable' }, 500)));
-
-const json = (data: unknown, message?: string, error?: string, status = 200) =>
-  Response.json({ data, message, error }, { status });
-
-const toNum = (v: unknown, fallback = 0) => {
-  const n = Number(v);
+const toNumber = (value: unknown, fallback = 0) => {
+  const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
-const isId = (v: unknown) => typeof v === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(v);
-const isStatus = (v: unknown) => ["pending", "paid", "fulfilled", "cancelled"].includes(String(v ?? ""));
-const safeText = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-const now = () => new Date().toISOString();
+const safeText = (value: unknown) => String(value ?? '').trim();
 
-index.get("/api/health", (c) => json({ ok: true, timestamp: now() }, "ok"));
+const productWhere = (q: Record<string, unknown>) => {
+  const clauses: string[] = [];
+  const params: Record<string, unknown> = {};
+  if (q.query) {
+    clauses.push('(name LIKE @query OR description LIKE @query OR collection LIKE @query OR category LIKE @query)');
+    params.query = `%${safeText(q.query)}%`;
+  }
+  if (q.category) {
+    clauses.push('category = @category');
+    params.category = safeText(q.category);
+  }
+  if (q.collection) {
+    clauses.push('collection = @collection');
+    params.collection = safeText(q.collection);
+  }
+  if (q.minPrice !== undefined) {
+    clauses.push('price >= @minPrice');
+    params.minPrice = toNumber(q.minPrice);
+  }
+  if (q.maxPrice !== undefined) {
+    clauses.push('price <= @maxPrice');
+    params.maxPrice = toNumber(q.maxPrice);
+  }
+  if (q.inStock !== undefined) {
+    clauses.push('inStock = @inStock');
+    params.inStock = q.inStock === true || q.inStock === 'true' ? 1 : 0;
+  }
+  return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
+};
 
-index.get("/api/products", (c) => {
-  const rows = db
-    .query(
-      "SELECT id, slug, name, description, category, collection, price, compareAtPrice, currency, images, variants, featured, inStock, tags, createdAt, updatedAt FROM products ORDER BY COALESCE(featured, 0) DESC, datetime(COALESCE(updatedAt, createdAt, CURRENT_TIMESTAMP)) DESC"
-    )
-    .all() as any[];
-  const data = rows.map((r) => ({
-    ...r,
-    price: toNum(r?.price),
-    compareAtPrice: r?.compareAtPrice == null ? null : toNum(r?.compareAtPrice),
-    images: Array.isArray(r?.images) ? r.images : JSON.parse(r?.images ?? "[]"),
-    variants: Array.isArray(r?.variants) ? r.variants : JSON.parse(r?.variants ?? "[]"),
-    tags: Array.isArray(r?.tags) ? r.tags : JSON.parse(r?.tags ?? "[]"),
-    featured: Boolean(r?.featured),
-    inStock: r?.inStock == null ? true : Boolean(r?.inStock),
-  }));
-  return json(data);
+index.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
+
+index.all('/api/auth/*', (c) => typeof auth !== 'undefined' && auth && auth.handler ? auth.handler(c.req.raw) : (typeof auth === 'function' ? auth(c.req.raw) : c.json({ error: 'Auth handler unavailable' }, 500)));
+
+index.get('/api/health', (c) => c.json({ ok: true, service: 'nddn-store' }));
+
+index.get('/api/products', async (c) => {
+  const q = c.req.query();
+  const { where, params } = productWhere(q);
+  const sortMap: Record<string, string> = {
+    featured: 'featured DESC, createdAt DESC',
+    newest: 'createdAt DESC',
+    'price-asc': 'price ASC',
+    'price-desc': 'price DESC',
+    rating: 'rating DESC, reviewCount DESC',
+  };
+  const sort = sortMap[q.sort ?? 'featured'] ?? sortMap.featured;
+  const result = await db.execute(`SELECT * FROM products ${where} ORDER BY ${sort}`, params);
+  return c.json({ data: result.rows ?? [] });
 });
 
-index.get("/api/products/:slug", (c) => {
-  const slug = safeText(c.req.param("slug"));
-  if (!slug) return json(null, "Invalid slug", "INVALID_SLUG", 400);
-  const row = db
-    .query(
-      "SELECT id, slug, name, description, category, collection, price, compareAtPrice, currency, images, variants, featured, inStock, tags, createdAt, updatedAt FROM products WHERE slug = ? LIMIT 1"
-    )
-    .get(slug) as any;
-  if (!row) return json(null, "Product not found", "NOT_FOUND", 404);
-  return json({
-    ...row,
-    price: toNum(row?.price),
-    compareAtPrice: row?.compareAtPrice == null ? null : toNum(row?.compareAtPrice),
-    images: Array.isArray(row?.images) ? row.images : JSON.parse(row?.images ?? "[]"),
-    variants: Array.isArray(row?.variants) ? row.variants : JSON.parse(row?.variants ?? "[]"),
-    tags: Array.isArray(row?.tags) ? row.tags : JSON.parse(row?.tags ?? "[]"),
-    featured: Boolean(row?.featured),
-    inStock: row?.inStock == null ? true : Boolean(row?.inStock),
-  });
+index.get('/api/products/:slug', async (c) => {
+  const slug = safeText(c.req.param('slug'));
+  const result = await db.execute('SELECT * FROM products WHERE slug = @slug LIMIT 1', { slug });
+  const product = result.rows?.[0] ?? null;
+  if (!product) return c.json({ error: 'Product not found' }, 404);
+  return c.json({ data: product });
 });
 
-index.get("/api/orders", (c) => {
-  const userId = c.get("user")?.id ?? null;
-  const rows = db
-    .query(
-      userId
-        ? "SELECT * FROM orders WHERE userId = ? ORDER BY datetime(createdAt) DESC"
-        : "SELECT * FROM orders ORDER BY datetime(createdAt) DESC"
-    )
-    .all(userId ? [userId] : []) as any[];
-  const data = rows.map((o) => ({
-    ...o,
-    items: Array.isArray(o?.items) ? o.items : JSON.parse(o?.items ?? "[]"),
-    subtotal: toNum(o?.subtotal),
-    shipping: toNum(o?.shipping),
-    tax: toNum(o?.tax),
-    total: toNum(o?.total),
-  }));
-  return json(data);
+index.get('/api/products/:slug/reviews', async (c) => {
+  const slug = safeText(c.req.param('slug'));
+  const product = await db.execute('SELECT id FROM products WHERE slug = @slug LIMIT 1', { slug });
+  const productId = product.rows?.[0]?.id ?? null;
+  if (!productId) return c.json({ data: [] });
+  const reviews = await db.execute('SELECT * FROM reviews WHERE productId = @productId ORDER BY createdAt DESC', { productId });
+  return c.json({ data: reviews.rows ?? [] });
 });
 
-index.post("/api/orders", async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const items = Array.isArray(body?.items) ? body.items : [];
-  if (!items.length) return json(null, "Order items are required", "INVALID_PAYLOAD", 400);
-
-  const normalized = items
-    .map((item: any) => ({
-      productId: safeText(item?.productId),
-      variantId: item?.variantId == null ? null : safeText(item?.variantId),
-      name: safeText(item?.name),
-      price: toNum(item?.price),
-      quantity: Math.floor(toNum(item?.quantity, 0)),
-      image: item?.image == null ? null : safeText(item?.image),
-    }))
-    .filter((item: any) => isId(item.productId) && item.name && item.price >= 0 && item.quantity > 0);
-
-  if (!normalized.length) return json(null, "Invalid order items", "INVALID_ITEMS", 400);
-
-  const subtotal = normalized.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
-  const shipping = Math.max(0, toNum(body?.shipping, subtotal > 0 ? 250 : 0));
-  const tax = Math.max(0, toNum(body?.tax, Math.round(subtotal * 0.05)));
-  const total = Math.max(0, toNum(body?.total, subtotal + shipping + tax));
-  if (Math.abs(total - (subtotal + shipping + tax)) > 0.01) return json(null, "Total mismatch", "INVALID_TOTAL", 400);
-
-  const status = isStatus(body?.status) ? body.status : "pending";
+index.post('/api/reviews', async (c) => {
+  const body = await parseBody(c);
+  const productId = safeText(body?.productId);
+  const rating = Math.max(1, Math.min(5, Math.round(toNumber(body?.rating, 5))));
+  const bodyText = safeText(body?.body);
+  if (!productId || !bodyText) return c.json({ error: 'Invalid review payload' }, 400);
   const id = crypto.randomUUID();
-  const userId = c.get("user")?.id ?? null;
-  const createdAt = now();
-  const shippingAddress = body?.shippingAddress ?? null;
-  const billingAddress = body?.billingAddress ?? null;
-
-  db.query(
-    "INSERT INTO orders (id, userId, items, subtotal, shipping, tax, total, currency, status, shippingAddress, billingAddress, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(
-    id,
-    userId,
-    JSON.stringify(normalized),
-    subtotal,
-    shipping,
-    tax,
-    total,
-    safeText(body?.currency) || "INR",
-    status,
-    shippingAddress ? JSON.stringify(shippingAddress) : null,
-    billingAddress ? JSON.stringify(billingAddress) : null,
-    createdAt,
-    createdAt
+  await db.execute(
+    'INSERT INTO reviews (id, productId, userId, userName, rating, title, body, createdAt) VALUES (@id, @productId, @userId, @userName, @rating, @title, @body, @createdAt)',
+    { id, productId, userId: body?.userId ?? null, userName: body?.userName ?? null, rating, title: body?.title ?? null, body: bodyText, createdAt: new Date().toISOString() }
   );
-
-  return json({ orderId: id, paymentUrl: null }, "Order created", undefined, 201);
+  return c.json({ data: { id, productId, rating, body: bodyText } }, 201);
 });
 
-index.get("/api/admin/tables", (c) => {
-  const user = c.get("user") ?? null;
-  if (user?.role !== "admin") return json(null, "Forbidden", "FORBIDDEN", 403);
-  return json(inspectTables());
+index.get('/api/orders', async (c) => {
+  const userId = c.req.query('userId');
+  const where = userId ? 'WHERE userId = @userId' : '';
+  const orders = await db.execute(`SELECT * FROM orders ${where} ORDER BY createdAt DESC`, userId ? { userId } : {});
+  return c.json({ data: orders.rows ?? [] });
 });
 
-index.get("/api/admin/tables/:tableName", (c) => {
-  const user = c.get("user") ?? null;
-  if (user?.role !== "admin") return json(null, "Forbidden", "FORBIDDEN", 403);
-  const tableName = safeText(c.req.param("tableName"));
-  if (!isId(tableName)) return json(null, "Invalid table name", "INVALID_TABLE", 400);
-  return json(getTableData(tableName));
+index.post('/api/orders', async (c) => {
+  const body = await parseBody(c);
+  const items = Array.isArray(body?.items) ? body.items : [];
+  const address = body?.address ?? null;
+  const email = safeText(body?.email);
+  if (!items.length || !address || !email) return c.json({ error: 'Invalid checkout payload' }, 400);
+  const subtotal = items.reduce((sum: number, item: any) => sum + toNumber(item?.price) * Math.max(1, toNumber(item?.quantity, 1)), 0);
+  const shipping = subtotal > 25000 ? 0 : 499;
+  const tax = Math.round(subtotal * 0.05);
+  const total = subtotal + shipping + tax;
+  const orderId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  await db.execute('BEGIN');
+  try {
+    await db.execute(
+      'INSERT INTO orders (id, userId, subtotal, shipping, tax, total, status, shippingAddress, createdAt, updatedAt) VALUES (@id, @userId, @subtotal, @shipping, @tax, @total, @status, @shippingAddress, @createdAt, @updatedAt)',
+      { id: orderId, userId: body?.userId ?? null, subtotal, shipping, tax, total, status: 'pending', shippingAddress: JSON.stringify(address), createdAt, updatedAt: createdAt }
+    );
+    for (const item of items) {
+      const orderItemId = crypto.randomUUID();
+      await db.execute(
+        'INSERT INTO order_items (id, orderId, productId, name, image, price, quantity, size, color) VALUES (@id, @orderId, @productId, @name, @image, @price, @quantity, @size, @color)',
+        { id: orderItemId, orderId, productId: safeText(item?.productId), name: safeText(item?.name), image: safeText(item?.image), price: toNumber(item?.price), quantity: Math.max(1, toNumber(item?.quantity, 1)), size: item?.size ?? null, color: item?.color ?? null }
+      );
+    }
+    await db.execute('COMMIT');
+    return c.json({ data: { id: orderId, subtotal, shipping, tax, total, status: 'pending' } }, 201);
+  } catch (error) {
+    await db.execute('ROLLBACK');
+    return c.json({ error: 'Failed to create order' }, 500);
+  }
 });
+
+index.get('/api/profile', async (c) => {
+  const userId = c.req.query('userId');
+  if (!userId) return c.json({ data: null });
+  const users = await db.execute('SELECT * FROM users WHERE id = @userId LIMIT 1', { userId });
+  const addresses = await db.execute('SELECT * FROM addresses WHERE userId = @userId ORDER BY isDefault DESC, createdAt DESC', { userId });
+  return c.json({ data: { user: users.rows?.[0] ?? null, addresses: addresses.rows ?? [] } });
+});
+
+index.post('/api/addresses', async (c) => {
+  const body = await parseBody(c);
+  const fullName = safeText(body?.fullName);
+  const line1 = safeText(body?.line1);
+  const city = safeText(body?.city);
+  const state = safeText(body?.state);
+  const postalCode = safeText(body?.postalCode);
+  const country = safeText(body?.country);
+  if (!fullName || !line1 || !city || !state || !postalCode || !country) return c.json({ error: 'Invalid address payload' }, 400);
+  const id = crypto.randomUUID();
+  await db.execute(
+    'INSERT INTO addresses (id, userId, fullName, line1, line2, city, state, postalCode, country, phone, isDefault, createdAt) VALUES (@id, @userId, @fullName, @line1, @line2, @city, @state, @postalCode, @country, @phone, @isDefault, @createdAt)',
+    { id, userId: body?.userId ?? null, fullName, line1, line2: body?.line2 ?? null, city, state, postalCode, country, phone: body?.phone ?? null, isDefault: body?.isDefault ? 1 : 0, createdAt: new Date().toISOString() }
+  );
+  return c.json({ data: { id } }, 201);
+});
+
+index.get('/api/admin/tables', async (c) => c.json({ data: await inspectTables() }));
+index.get('/api/admin/table/:name', async (c) => c.json({ data: await getTableData(safeText(c.req.param('name'))) }));
+
+index.onError((err, c) => c.json({ error: err?.message ?? 'Internal server error' }, 500));
+
+initializeDatabase().catch(() => undefined);
 
 export default index;

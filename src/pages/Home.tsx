@@ -1,244 +1,218 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Heart, Shield, Truck, RefreshCw, Pencil } from 'lucide-react';
-import EditBannerModal from '../components/EditBannerModal';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ArrowRight, Sparkles, Star } from 'lucide-react';
+import type { Product } from '@/types';
+import { cn } from '@/lib/utils';
 
-interface HomeProps {
-  products?: any[];
-  siteContent?: any;
-  onToggleWishlist: (product: any) => void;
-  wishlistIds: string[];
-  isAdminMode?: boolean;
-  onUpdateBanner?: (key: 'banner1' | 'banner2', updatedData: any) => void;
-}
+export function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [activeImage, setActiveImage] = useState<string>(
+    'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85',
+  );
 
-export default function Home({
-  products = [],
-  siteContent,
-  onToggleWishlist,
-  wishlistIds,
-  isAdminMode = false,
-  onUpdateBanner,
-}: HomeProps) {
-  const navigate = useNavigate();
-  const [editingBanner, setEditingBanner] = useState<'banner1' | 'banner2' | null>(null);
-  const valuePillars = [{"title":"Free Shipping","description":"Enjoy free shipping on all orders over $75.","icon":"truck"},{"title":"Secure Payments","description":"Your transactions are encrypted and protected.","icon":"shield"},{"title":"Easy Returns","description":"Hassle-free returns within 30 days.","icon":"refresh"}];
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/products');
+        const json = (await res.json()) as { data?: Product[] };
+        if (alive) setProducts(Array.isArray(json?.data) ? json.data : []);
+      } catch {
+        if (alive) setProducts([]);
+      }
+    };
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const banner1 = siteContent?.banner1 || {
-    title: 'NDDN store CLOTHING BRAND',
-    subtitle: 'CATALOGUE N° 01 / EDITORIAL',
-    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1200&auto=format&fit=crop',
-    ctaText: 'SHOP NOW',
-  };
+  const featured = useMemo(() => products.filter((p) => p?.featured).slice(0, 4), [products]);
+  const categories = ['tailoring', 'outerwear', 'knitwear', 'shirts', 'trousers', 'accessories'];
 
-  const banner2 = siteContent?.banner2 || {
-    title: 'NEW ARRIVALS',
-    subtitle: 'NEW ARRIVALS / SEASON 24',
-    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?q=80&w=1200&auto=format&fit=crop',
-    ctaText: 'SHOP NOW',
-  };
-
-  const displayedProducts = products.length > 0 ? products.slice(0, 4) : [];
-
-  const getPillarIcon = (iconType: string) => {
-    switch (iconType) {
-      case 'shield': return <Shield size={20} />;
-      case 'refresh': return <RefreshCw size={20} />;
-      default: return <Truck size={20} />;
-    }
-  };
+  const heroImages = [
+    'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85',
+    'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85',
+    'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85',
+  ];
 
   return (
-    <div className="bg-white text-zinc-900 pb-20 font-sans relative">
-      {/* 50/50 Dual Vertical Editorial Split Banner Hero */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-0 bg-black min-h-[85vh]">
-        {/* Left Column: Hero Banner 1 */}
-        <div className="relative min-h-[500px] md:min-h-[80vh] flex flex-col justify-end p-8 md:p-12 overflow-hidden group">
-          <img
-            src={banner1.image}
-            alt={banner1.title}
-            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 opacity-90"
-            crossOrigin="anonymous"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-          
-          {isAdminMode && (
-            <button
-              onClick={() => setEditingBanner('banner1')}
-              className="absolute top-4 right-4 z-20 bg-white/90 hover:bg-white text-black p-2.5 rounded-full shadow-md cursor-pointer transition-transform hover:scale-110"
-              title="Edit Left Hero Banner"
-            >
-              <Pencil size={18} />
-            </button>
-          )}
-
-          <div className="relative z-10 space-y-3">
-            <span className="text-[11px] font-mono font-bold tracking-widest text-zinc-300 uppercase block">
-              {banner1.subtitle}
-            </span>
-            <h1 className="text-3xl md:text-5xl font-sans font-black uppercase text-white tracking-tight leading-none">
-              {banner1.title}
-            </h1>
-            <div className="pt-2">
-              <Link
-                to="/shop"
-                className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white hover:text-zinc-300 transition-colors"
-              >
-                <span>{banner1.ctaText}</span>
-                <ArrowRight size={14} />
-              </Link>
+    <div className="bg-[#F5F1EB] text-[#2B2B2B]">
+      <section className="relative overflow-hidden border-b border-[#CFC6BA]">
+        <div className="grid min-h-[92vh] lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="relative min-h-[62vh] lg:min-h-[92vh]">
+            <motion.img
+              key={activeImage}
+              src={activeImage}
+              alt="NDDN Store editorial lookbook"
+              crossOrigin="anonymous"
+              initial={{ opacity: 0, scale: 1.03 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/10 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-8 lg:p-10">
+              <div className="max-w-2xl border border-white/30 bg-[#FFFDF9]/90 p-5 backdrop-blur-sm sm:p-7">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#716A63]">Issue 01 / NDDN Store</p>
+                <h1 className="mt-3 font-serif text-5xl font-light tracking-tight text-[#2B2B2B] sm:text-6xl lg:text-7xl">
+                  Quiet luxury, sharply cut.
+                </h1>
+                <p className="mt-4 max-w-xl text-sm leading-6 text-[#716A63] sm:text-base">
+                  Warm ivory canvases, deep-crimson actions, and precise silhouettes shaped for the modern wardrobe.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center gap-3">
+                  <Link
+                    to="/shop"
+                    className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000]"
+                  >
+                    Explore Collection <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setActiveImage(heroImages[(heroImages.indexOf(activeImage) + 1) % heroImages.length] ?? heroImages[0])}
+                    className="inline-flex items-center gap-2 border border-[#CFC6BA] bg-white px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#2B2B2B] transition-colors hover:bg-[#F5F1EB]"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Change Frame
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Right Column: Hero Banner 2 */}
-        <div className="relative min-h-[500px] md:min-h-[80vh] flex flex-col justify-end p-8 md:p-12 overflow-hidden group">
-          <img
-            src={banner2.image}
-            alt={banner2.title}
-            className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 opacity-90"
-            crossOrigin="anonymous"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-
-          {isAdminMode && (
-            <button
-              onClick={() => setEditingBanner('banner2')}
-              className="absolute top-4 right-4 z-20 bg-white/90 hover:bg-white text-black p-2.5 rounded-full shadow-md cursor-pointer transition-transform hover:scale-110"
-              title="Edit Right Hero Banner"
-            >
-              <Pencil size={18} />
-            </button>
-          )}
-
-          <div className="relative z-10 space-y-3">
-            <span className="text-[11px] font-mono font-bold tracking-widest text-zinc-300 uppercase block">
-              {banner2.subtitle}
-            </span>
-            <h2 className="text-3xl md:text-5xl font-sans font-black uppercase text-white tracking-tight leading-none">
-              {banner2.title}
-            </h2>
-            <div className="pt-2">
-              <Link
-                to="/shop"
-                className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white hover:text-zinc-300 transition-colors"
+          <div className="grid grid-rows-2 border-t border-[#CFC6BA] lg:border-l lg:border-t-0">
+            {heroImages.slice(1).map((src, index) => (
+              <motion.button
+                key={src}
+                type="button"
+                onClick={() => setActiveImage(src)}
+                whileHover={{ scale: 1.01 }}
+                className={cn(
+                  'relative min-h-[30vh] overflow-hidden border-b border-[#CFC6BA] text-left last:border-b-0',
+                  index === 0 ? 'lg:min-h-0' : 'lg:min-h-0',
+                )}
               >
-                <span>{banner2.ctaText}</span>
-                <ArrowRight size={14} />
-              </Link>
-            </div>
+                <img src={src} alt="Seasonal frame" crossOrigin="anonymous" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
+                <div className="absolute inset-0 bg-black/10" />
+              </motion.button>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Featured Products Section */}
-      <section className="max-w-7xl mx-auto px-6 pt-20">
-        <div className="text-center space-y-2 mb-12">
-          <h2 className="text-3xl md:text-4xl font-sans font-black uppercase tracking-tight text-zinc-900">
-            FEATURED PRODUCTS
-          </h2>
-          <p className="text-xs uppercase tracking-widest text-zinc-500 font-sans">
-            Effortless Style, Every Day
-          </p>
+      <section className="border-b border-[#CFC6BA] bg-[#FFFDF9]">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#716A63]">Collection index</p>
+              <h2 className="mt-2 font-serif text-3xl font-light tracking-tight text-[#2B2B2B] sm:text-4xl">A concise wardrobe, edited by category.</h2>
+            </div>
+            <Link to="/shop" className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8B0000]">
+              View all categories <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <Link
+                key={category}
+                to={`/shop?category=${category}`}
+                className="min-w-0 border border-[#CFC6BA] bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2B2B2B] transition-colors hover:border-[#8B0000] hover:text-[#8B0000]"
+              >
+                {category}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#716A63]">Trending now</p>
+            <h2 className="mt-2 font-serif text-3xl font-light tracking-tight text-[#2B2B2B]">Live product drop</h2>
+          </div>
+          <Link to="/shop" className="hidden items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8B0000] sm:inline-flex">
+            Shop latest <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
-          {displayedProducts.map((product: any) => {
-            const isWishlisted = wishlistIds.includes(product.id);
-            return (
-              <div key={product.id} className="group flex flex-col space-y-3 relative">
-                <div className="relative aspect-[3/4] bg-zinc-100 overflow-hidden rounded-none border border-zinc-200">
+        <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          {featured.map((product, index) => (
+            <motion.article
+              key={product?.id ?? index}
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.45, delay: index * 0.05 }}
+              className="group border border-[#CFC6BA] bg-[#FFFDF9]"
+            >
+              <Link to={`/product/${product?.slug ?? product?.id ?? ''}`} className="block">
+                <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F1EB]">
                   <img
-                    src={product.image}
-                    alt={product.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    src={product?.image ?? heroImages[index % heroImages.length] ?? heroImages[0]}
+                    alt={product?.name ?? 'Featured product'}
                     crossOrigin="anonymous"
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
-                  {product.tag && (
-                    <span className="absolute top-3 left-3 bg-black text-white text-[9px] font-bold tracking-widest uppercase px-2.5 py-1 font-mono">
-                      {product.tag}
-                    </span>
-                  )}
-
-                  {isAdminMode && (
-                    <button
-                      onClick={() => navigate('/admin/products')}
-                      className="absolute top-3 right-12 z-10 bg-white/90 backdrop-blur p-1.5 rounded-full border border-gray-200 shadow-xs cursor-pointer hover:bg-black hover:text-white transition-colors"
-                      title="Edit product"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => onToggleWishlist(product)}
-                    className="absolute top-3 right-3 z-10 bg-white/80 hover:bg-white p-2 rounded-full text-zinc-900 transition-colors shadow-xs"
-                    aria-label="Wishlist"
-                  >
-                    <Heart size={16} className={isWishlisted ? 'fill-black text-black' : ''} />
-                  </button>
-
-                  <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
-                    <button
-                      onClick={() => navigate('/product/' + product.id)}
-                      className="w-full bg-white text-black hover:bg-zinc-100 text-xs font-bold uppercase tracking-widest py-3 transition-colors text-center"
-                    >
-                      QUICK VIEW
-                    </button>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.28em] text-[#716A63]">{product?.collection ?? product?.category ?? 'Collection'}</p>
+                      <h3 className="mt-2 truncate text-sm font-semibold text-[#2B2B2B]">{product?.name ?? 'Untitled piece'}</h3>
+                    </div>
+                    <div className="shrink-0 text-sm font-semibold text-[#2B2B2B]">₹{Number(product?.price ?? 0).toLocaleString('en-IN')}</div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8B0000] opacity-0 transition-opacity group-hover:opacity-100">
+                    Quick view <ArrowRight className="h-4 w-4" />
                   </div>
                 </div>
-
-                <div className="flex flex-col space-y-1">
-                  <span className="text-[10px] font-mono font-semibold text-zinc-400 uppercase tracking-widest">
-                    {product.category}
-                  </span>
-                  <Link
-                    to={'/product/' + product.id}
-                    className="text-xs font-bold uppercase tracking-wider text-zinc-900 hover:text-zinc-600 transition-colors line-clamp-1"
-                  >
-                    {product.title}
-                  </Link>
-                  <span className="text-xs font-bold font-mono text-zinc-900">
-                    ${product.price?.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Value Pillars Section */}
-      <section className="max-w-7xl mx-auto px-6 pt-24">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 border-t border-b border-zinc-200 py-12">
-          {valuePillars.map((pillar: any, idx: number) => (
-            <div key={idx} className="flex items-start space-x-4">
-              <div className="p-3 bg-zinc-100 text-zinc-900 rounded-none border border-zinc-200">
-                {getPillarIcon(pillar.icon)}
-              </div>
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-900">
-                  {pillar.title}
-                </h4>
-                <p className="text-xs text-zinc-500 leading-relaxed font-sans">
-                  {pillar.description}
-                </p>
-              </div>
-            </div>
+              </Link>
+            </motion.article>
           ))}
         </div>
       </section>
 
-      {/* Edit Banner Modal */}
-      <EditBannerModal
-        isOpen={!!editingBanner}
-        onClose={() => setEditingBanner(null)}
-        bannerKey={editingBanner}
-        currentData={editingBanner === 'banner1' ? banner1 : banner2}
-        onSave={(key, data) => {
-          if (onUpdateBanner) onUpdateBanner(key, data);
-        }}
-      />
+      <section className="border-y border-[#CFC6BA] bg-[#FFFDF9]">
+        <div className="mx-auto grid max-w-7xl gap-0 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="border-b border-[#CFC6BA] p-6 lg:border-b-0 lg:border-r lg:p-10">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#716A63]">Craft manifesto</p>
+            <h2 className="mt-3 font-serif text-4xl font-light tracking-tight text-[#2B2B2B]">Precision tailoring, softened by texture.</h2>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-[#716A63]">
+              Each silhouette is designed to move between ceremony and routine, balancing structure, drape, and a restrained palette.
+            </p>
+            <div className="mt-6 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#8B0000]">
+              <Star className="h-4 w-4" />
+              Editorial quality, daily wearability
+            </div>
+          </div>
+          <div className="grid gap-0 sm:grid-cols-2">
+            <img src="https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80" alt="Craft detail" crossOrigin="anonymous" className="h-full min-h-[260px] w-full object-cover" />
+            <img src="https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80" alt="Craft detail" crossOrigin="anonymous" className="h-full min-h-[260px] w-full object-cover" />
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#F5F1EB]">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="flex flex-col items-start justify-between gap-4 border border-[#CFC6BA] bg-[#FFFDF9] p-6 sm:flex-row sm:items-end">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#716A63]">Newsletter</p>
+              <h2 className="mt-2 font-serif text-3xl font-light tracking-tight text-[#2B2B2B]">Receive the next drop before it lands.</h2>
+            </div>
+            <Link
+              to="/shop"
+              className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000]"
+            >
+              Join the list <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
+
+export default Home;

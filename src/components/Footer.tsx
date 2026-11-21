@@ -1,104 +1,89 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface FooterProps {
-  isAdminMode?: boolean;
-  setIsAdminMode?: (val: boolean) => void;
+export interface FooterProps {
+  className?: string;
 }
 
-export default function Footer({ isAdminMode = false, setIsAdminMode }: FooterProps) {
-  const navigate = useNavigate();
-  const [footerTaps, setFooterTaps] = useState(0);
+export function Footer({ className = '' }: FooterProps) {
+  const [email, setEmail] = useState('');
+  const year = useMemo(() => new Date().getFullYear(), []);
 
-  // Handle secret 25 footer taps silently -> navigates to admin signin
-  const handleFooterLogoTap = () => {
-    const next = footerTaps + 1;
-    setFooterTaps(next);
-    if (next >= 25) {
-      navigate('/admin');
-      setFooterTaps(0);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const value = email.trim();
+    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      toast.error('Please enter a valid email address.');
+      return;
     }
+    toast.success('You are on the list.');
+    setEmail('');
   };
 
+  const linkClass = 'text-xs uppercase tracking-[0.22em] text-[#716A63] transition-colors hover:text-[#2B2B2B]';
+  const socialClass = 'inline-flex h-9 w-9 items-center justify-center border border-[#CFC6BA] text-[#2B2B2B] transition-colors hover:bg-[#8B0000] hover:text-white';
+
   return (
-    <footer className="bg-white border-t border-gray-200 mt-20 font-sans select-none">
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-
-          {/* Column 1: Logo & About */}
-          <div>
-            <div
-              className="inline-flex items-center mb-6 select-none cursor-default"
-              onClick={handleFooterLogoTap}
-              title="Brand Logo"
-            >
-              <span className="font-semibold text-xl tracking-[0.2em] uppercase text-black font-sans">NDDN store</span>
-            </div>
-            <h3 className="font-medium text-sm mb-4 tracking-wide text-black">ABOUT</h3>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li><Link to="/about" className="hover:opacity-60 transition-opacity cursor-pointer">Our Story</Link></li>
-              <li><Link to="/about" className="hover:opacity-60 transition-opacity cursor-pointer">Careers</Link></li>
-              <li><Link to="/about" className="hover:opacity-60 transition-opacity cursor-pointer">Sustainability</Link></li>
-            </ul>
-          </div>
-
-          {/* Column 2: Customer Service */}
-          <div>
-            <h3 className="font-medium text-sm mb-4 tracking-wide text-black">CUSTOMER SERVICE</h3>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li><Link to="/contact" className="hover:opacity-60 transition-opacity cursor-pointer">Contact Us</Link></li>
-              <li><Link to="/contact" className="hover:opacity-60 transition-opacity cursor-pointer">Shipping & Returns</Link></li>
-              <li><Link to="/contact" className="hover:opacity-60 transition-opacity cursor-pointer">FAQ</Link></li>
-              <li><Link to="/about" className="hover:opacity-60 transition-opacity cursor-pointer">Size Guide</Link></li>
-            </ul>
-          </div>
-
-          {/* Column 3: Legal */}
-          <div>
-            <h3 className="font-medium text-sm mb-4 tracking-wide text-black">LEGAL</h3>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li><a href="#" className="hover:opacity-60 transition-opacity cursor-pointer">Privacy Policy</a></li>
-              <li><a href="#" className="hover:opacity-60 transition-opacity cursor-pointer">Terms of Service</a></li>
-            </ul>
-          </div>
-
-          {/* Column 4: Newsletter */}
-          <div>
-            <h3 className="font-medium text-sm mb-4 tracking-wide text-black">STAY CONNECTED</h3>
-            <p className="text-sm text-gray-600 mb-4">Subscribe to receive updates, access to exclusive deals, and more.</p>
-            <form onSubmit={(e) => { e.preventDefault(); alert('Subscribed!'); }} className="flex flex-col gap-3 mb-4">
-              <input
-                type="email"
-                placeholder="Email address"
-                className="w-full border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-black transition-colors"
-              />
-              <button
-                type="submit"
-                className="w-full bg-black text-white px-6 py-2 text-sm font-medium hover:bg-gray-800 transition-colors cursor-pointer"
-              >
-                SIGN UP
-              </button>
-            </form>
-
-            {isAdminMode && (
-              <button
-                onClick={() => {
-                  if (setIsAdminMode) setIsAdminMode(false);
-                  navigate('/');
-                }}
-                className="text-sm text-red-600 hover:opacity-60 font-medium transition-opacity cursor-pointer"
-              >
-                Admin Sign Out
-              </button>
-            )}
-          </div>
-
+    <footer className={`border-t border-[#CFC6BA] bg-[#FFFDF9] ${className}`}>
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1.4fr_1fr_1fr] lg:px-8">
+        <div className="space-y-4">
+          <p className="font-['Playfair_Display'] text-2xl font-light tracking-tight text-[#2B2B2B]">NDDN Store</p>
+          <p className="max-w-md text-sm leading-6 text-[#716A63]">
+            Warm ivory canvases, sharp tailoring, and deep-crimson accents for a quieter kind of luxury.
+          </p>
+          <p className="text-xs uppercase tracking-[0.22em] text-[#716A63]">© {year} NDDN Store</p>
         </div>
 
-        <div className="mt-12 pt-8 border-t border-gray-200 text-sm text-gray-500">
-          <p className="text-center">&copy; 2026 NDDN store. All rights reserved.</p>
+        <nav aria-label="Customer care" className="space-y-4">
+          <h2 className="text-xs uppercase tracking-[0.22em] text-[#2B2B2B]">Customer Care</h2>
+          <div className="flex flex-col gap-2.5">
+            <Link className={linkClass} to="/shop">Shop</Link>
+            <Link className={linkClass} to="/checkout">Checkout</Link>
+            <Link className={linkClass} to="/dashboard">Orders & Account</Link>
+            <a className={linkClass} href="mailto:care@nddnstore.com">care@nddnstore.com</a>
+          </div>
+        </nav>
+
+        <div className="space-y-4">
+          <h2 className="text-xs uppercase tracking-[0.22em] text-[#2B2B2B]">Shipping & Social</h2>
+          <div className="flex flex-col gap-2.5">
+            <Link className={linkClass} to="/shop?filter=shipping">Shipping Information</Link>
+            <Link className={linkClass} to="/shop?filter=returns">Returns & Exchanges</Link>
+            <div className="flex flex-wrap gap-2">
+              <a className={socialClass} href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram size={16} /></a>
+              <a className={socialClass} href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Twitter"><Twitter size={16} /></a>
+              <a className={socialClass} href="https://linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn"><Linkedin size={16} /></a>
+              <a className={socialClass} href="https://youtube.com" target="_blank" rel="noreferrer" aria-label="YouTube"><Youtube size={16} /></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-[#CFC6BA]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8">
+          <p className="max-w-xl text-sm leading-6 text-[#716A63]">
+            A refined wardrobe built for considered dressing, delivered with precision and care.
+          </p>
+          <form onSubmit={handleSubmit} className="flex w-full max-w-md items-stretch gap-2">
+            <label className="sr-only" htmlFor="footer-email">Email address</label>
+            <input
+              id="footer-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email for collection notes"
+              className="min-w-0 flex-1 border border-[#CFC6BA] bg-[#FFFDF9] px-4 py-3 text-sm text-[#2B2B2B] outline-none placeholder:text-[#716A63] focus:border-[#8B0000]"
+            />
+            <button type="submit" className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000]">
+              Join <ArrowRight size={14} />
+            </button>
+          </form>
         </div>
       </div>
     </footer>
   );
 }
+
+export default Footer;
