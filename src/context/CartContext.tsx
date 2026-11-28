@@ -5,16 +5,11 @@ type CartContextValue = {
   items: CartItem[];
   isOpen: boolean;
   subtotal: number;
-  shipping: number;
-  total: number;
   itemCount: number;
-  shippingProgress: number;
   openCart: () => void;
   closeCart: () => void;
   toggleCart: () => void;
-  addItem: (product: Product, quantity?: number, size?: string, color?: string) => void;
   addToCart: (product: Product, quantity?: number, size?: string, color?: string) => void;
-  removeItem: (productId: string, size?: string, color?: string) => void;
   removeFromCart: (productId: string, size?: string, color?: string) => void;
   updateQuantity: (productId: string, quantity: number, size?: string, color?: string) => void;
   clearCart: () => void;
@@ -22,11 +17,10 @@ type CartContextValue = {
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
-const STORAGE_KEY = 'nddn-store-cart-v1';
-const DRAWER_KEY = 'nddn-store-cart-open-v1';
-const FREE_SHIPPING_THRESHOLD = 25000;
+const STORAGE_KEY = 'nddn-cart-v1';
 
-const getKey = (productId: string, size?: string, color?: string) => `${productId}::${size ?? ''}::${color ?? ''}`;
+const safeNumber = (value: unknown, fallback = 0) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+const lineKey = (productId: string, size?: string, color?: string) => `${productId}::${size ?? ''}::${color ?? ''}`;
 
 export function CartProvider({ children }: { children?: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
@@ -34,10 +28,20 @@ export function CartProvider({ children }: { children?: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const rawItems = window.localStorage.getItem(STORAGE_KEY);
-      const rawOpen = window.localStorage.getItem(DRAWER_KEY);
-      if (rawItems) setItems(JSON.parse(rawItems) as CartItem[]);
-      if (rawOpen) setIsOpen(rawOpen === 'true');
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as CartItem[] | null;
+      if (Array.isArray(parsed)) {
+        setItems(
+          parsed
+            .filter((item) => item?.productId && item?.id)
+            .map((item) => ({
+              ...item,
+              quantity: Math.max(1, safeNumber(item?.quantity, 1)),
+              price: Math.max(0, safeNumber(item?.price, 0)),
+            })),
+        );
+      }
     } catch {
       setItems([]);
     }
@@ -49,81 +53,82 @@ export function CartProvider({ children }: { children?: React.ReactNode }) {
     } catch {}
   }, [items]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(DRAWER_KEY, String(isOpen));
-    } catch {}
-  }, [isOpen]);
+  const openCart = useCallback(() => setIsOpen(true), []);
+  const closeCart = useCallback(() => setIsOpen(false), []);
+  const toggleCart = useCallback(() => setIsOpen((prev) => !prev), []);
+  const setCartOpen = useCallback((open: boolean) => setIsOpen(open), []);
 
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + (item.product?.price ?? 0) * (item.quantity ?? 0), 0),
-    [items]
-  );
-
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 1200;
-  const total = subtotal + shipping;
-  const itemCount = items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
-  const shippingProgress = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100);
-
-  const upsertItem = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
+  const addToCart = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
     if (!product?.id) return;
-    setItems((current) => {
-      const key = getKey(product.id, size, color);
-      const existing = current.find((item) => getKey(item.productId, item.size, item.color) === key);
-      const stockLimit = product.inStock === false ? 0 : Number.MAX_SAFE_INTEGER;
+    const qty = Math.max(1, Math.floor(quantity));
+    setItems((prev) => {
+      const key = lineKey(product.id, size, color);
+      const existing = prev.find((item) => lineKey(item.productId, item.size, item.color) === key);
+      const stockCap = product?.inStock === false ? 0 : Number.POSITIVE_INFINITY;
       if (existing) {
-        const nextQuantity = Math.min(stockLimit, (existing.quantity ?? 0) + Math.max(1, quantity));
-        return current.map((item) => (getKey(item.productId, item.size, item.color) === key ? { ...item, product, quantity: nextQuantity } : item));
+        return prev.map((item) => {
+          if (lineKey(item.productId, item.size, item.color) !== key) return item;
+          const nextQty = Math.min(stockCap, item.quantity + qty);
+          return { ...item, quantity: Number.isFinite(nextQty) ? nextQty : item.quantity };
+        });
       }
-      if (stockLimit <= 0) return current;
-      return [...current, { productId: product.id, product, quantity: Math.min(stockLimit, Math.max(1, quantity)), size, color }];
+      if (stockCap <= 0) return prev;
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          productId: product.id,
+          product,
+          name: product?.name ?? 'Untitled product',
+          price: Math.max(0, safeNumber(product?.price, 0)),
+          quantity: Math.min(stockCap, qty),
+          image: product?.image ?? product?.images?.[0]?.url,
+          size,
+          color,
+        },
+      ];
     });
     setIsOpen(true);
   }, []);
 
-  const removeItem = useCallback((productId: string, size?: string, color?: string) => {
-    setItems((current) => current.filter((item) => getKey(item.productId, item.size, item.color) !== getKey(productId, size, color)));
+  const removeFromCart = useCallback((productId: string, size?: string, color?: string) => {
+    setItems((prev) => prev.filter((item) => lineKey(item.productId, item.size, item.color) !== lineKey(productId, size, color)));
   }, []);
 
   const updateQuantity = useCallback((productId: string, quantity: number, size?: string, color?: string) => {
-    setItems((current) =>
-      current
+    const nextQty = Math.max(0, Math.floor(quantity));
+    setItems((prev) =>
+      prev
         .map((item) => {
-          if (getKey(item.productId, item.size, item.color) !== getKey(productId, size, color)) return item;
-          const nextQuantity = Math.max(1, Math.floor(quantity));
-          const stockLimit = item.product?.inStock === false ? 0 : Number.MAX_SAFE_INTEGER;
-          return { ...item, quantity: Math.min(stockLimit, nextQuantity) };
+          if (lineKey(item.productId, item.size, item.color) !== lineKey(productId, size, color)) return item;
+          const stockCap = item?.product?.inStock === false ? 0 : Number.POSITIVE_INFINITY;
+          return { ...item, quantity: Math.min(stockCap, nextQty) };
         })
-        .filter((item) => item.quantity > 0)
+        .filter((item) => item.quantity > 0),
     );
   }, []);
 
   const clearCart = useCallback(() => setItems([]), []);
-  const openCart = useCallback(() => setIsOpen(true), []);
-  const closeCart = useCallback(() => setIsOpen(false), []);
-  const toggleCart = useCallback(() => setIsOpen((current) => !current), []);
+
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.price, 0) * safeNumber(item?.quantity, 0), 0), [items]);
+  const itemCount = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.quantity, 0), 0), [items]);
 
   const value = useMemo<CartContextValue>(
     () => ({
       items,
       isOpen,
       subtotal,
-      shipping,
-      total,
       itemCount,
-      shippingProgress,
       openCart,
       closeCart,
       toggleCart,
-      addItem: upsertItem,
-      addToCart: upsertItem,
-      removeItem,
-      removeFromCart: removeItem,
+      addToCart,
+      removeFromCart,
       updateQuantity,
       clearCart,
-      setCartOpen: setIsOpen,
+      setCartOpen,
     }),
-    [items, isOpen, subtotal, shipping, total, itemCount, shippingProgress, openCart, closeCart, toggleCart, upsertItem, removeItem, updateQuantity, clearCart]
+    [items, isOpen, subtotal, itemCount, openCart, closeCart, toggleCart, addToCart, removeFromCart, updateQuantity, clearCart, setCartOpen],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -1,140 +1,179 @@
 export type ID = string;
 
-export type ProductCategory =
-  | 'Outerwear'
-  | 'Dresses'
-  | 'Tailoring'
-  | 'Knitwear'
-  | 'Accessories'
-  | 'Footwear'
-  | 'Shirts'
-  | 'Trousers';
+export interface ProductImage {
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
 
-export type Product = {
+export interface Product {
   id: ID;
-  slug: string;
   name: string;
-  category: ProductCategory | string;
-  price: number;
-  currency?: string;
+  slug?: string;
   description?: string;
-  image: string;
-  gallery?: string[];
-  sizes?: string[];
-  colors?: string[];
+  price: number;
+  compareAtPrice?: number | null;
+  currency?: string;
+  category?: string;
+  collection?: string;
   material?: string;
-  inStock?: boolean;
+  color?: string;
+  sizes?: string[];
+  images?: ProductImage[];
+  image?: string;
   featured?: boolean;
+  inStock?: boolean;
   rating?: number;
   reviewCount?: number;
   createdAt?: string;
   updatedAt?: string;
-};
+}
 
-export type Review = {
+export interface Review {
   id: ID;
   productId: ID;
   userId?: ID;
-  userName: string;
+  userName?: string;
   rating: number;
   title?: string;
-  body: string;
-  createdAt: string;
+  body?: string;
+  createdAt?: string;
   updatedAt?: string;
-};
+}
 
-export type CartItem = {
+export interface CartItem {
+  id: ID;
   productId: ID;
   product?: Product;
+  name: string;
+  price: number;
   quantity: number;
+  image?: string;
   size?: string;
   color?: string;
-};
+}
 
-export type OrderItem = {
+export interface OrderItem {
   productId: ID;
   name: string;
   price: number;
   quantity: number;
+  image?: string;
   size?: string;
   color?: string;
-  image?: string;
-};
+}
 
-export type Order = {
+export interface Order {
   id: ID;
   userId?: ID;
-  email: string;
   items: OrderItem[];
   subtotal: number;
-  shipping: number;
+  shipping?: number;
   tax?: number;
   total: number;
-  status: 'pending' | 'paid' | 'fulfilled' | 'cancelled';
-  shippingAddress?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt?: string;
-};
-
-export type UserProfile = {
-  id: ID;
-  name?: string;
-  email: string;
-  image?: string;
-  phone?: string;
-  address?: string;
+  status?: "pending" | "paid" | "processing" | "shipped" | "delivered" | "cancelled";
+  paymentStatus?: "unpaid" | "authorized" | "paid" | "refunded";
+  shippingAddress?: Address;
+  billingAddress?: Address;
   createdAt?: string;
   updatedAt?: string;
-};
+}
 
-export type FilterState = {
-  query: string;
-  categories: string[];
-  sizes: string[];
-  colors: string[];
+export interface Address {
+  name?: string;
+  line1?: string;
+  line2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+}
+
+export interface UserProfile {
+  id: ID;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  role?: "customer" | "admin" | "editor";
+  phone?: string;
+  bio?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FilterState {
+  query?: string;
+  category?: string;
+  collection?: string;
+  color?: string;
+  size?: string;
   minPrice?: number;
   maxPrice?: number;
-  sortBy?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating';
-};
+  sortBy?: "featured" | "newest" | "price-asc" | "price-desc" | "rating";
+}
 
-export type CheckoutPayload = {
+export interface CheckoutAddressPayload {
+  name?: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  country: string;
+  phone?: string;
+}
+
+export interface CheckoutPayload {
+  items: Array<{
+    productId: ID;
+    quantity: number;
+    size?: string;
+    color?: string;
+  }>;
+  shippingAddress: CheckoutAddressPayload;
+  billingAddress?: CheckoutAddressPayload;
   email: string;
-  items: CartItem[];
-  shippingAddress: string;
   notes?: string;
-};
+  paymentMethod?: "card" | "cod" | "upi";
+}
 
-export type ApiResponse<T> = {
-  data?: T;
-  error?: string;
+export interface ApiResponse<T> {
+  data: T;
   message?: string;
-};
+  error?: string;
+}
 
-export type ProductsResponse = ApiResponse<Product[]>;
-export type ProductResponse = ApiResponse<Product>;
-export type ReviewsResponse = ApiResponse<Review[]>;
-export type ReviewResponse = ApiResponse<Review>;
-export type OrdersResponse = ApiResponse<Order[]>;
-export type OrderResponse = ApiResponse<Order>;
-export type UserResponse = ApiResponse<UserProfile>;
+export interface PaginatedResponse<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
 
-export type AuthPayload = {
+export interface AuthPayload {
   email: string;
   password: string;
   name?: string;
-};
+}
 
-export type SessionUser = {
+export interface SessionUser {
   id: ID;
-  email: string;
   name?: string;
+  email?: string;
   image?: string;
-};
+  role?: "customer" | "admin" | "editor";
+}
 
-export type SessionState = {
-  user?: SessionUser | null;
-  isAuthenticated: boolean;
-};
+export interface CatalogQuery {
+  search?: string;
+  category?: string;
+  collection?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+}
 
-export default {};
+export default Product;

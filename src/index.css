@@ -5,16 +5,16 @@
 :root {
   --color-bg: #F9F7F6;
   --color-bg-rgb: 249, 247, 246;
-  --color-surface: #F1ECE7;
-  --color-surface-rgb: 241, 236, 231;
-  --color-surface-hover: #E8DFD7;
-  --color-surface-hover-rgb: 232, 223, 215;
-  --color-border: #C9BEB4;
-  --color-border-rgb: 201, 190, 180;
+  --color-surface: #EEE8E2;
+  --color-surface-rgb: 238, 232, 226;
+  --color-surface-hover: #E3D9D0;
+  --color-surface-hover-rgb: 227, 217, 208;
+  --color-border: #C9BDB2;
+  --color-border-rgb: 201, 189, 178;
   --color-text-primary: #2E2E2E;
   --color-text-primary-rgb: 46, 46, 46;
-  --color-text-muted: #6F665F;
-  --color-text-muted-rgb: 111, 102, 95;
+  --color-text-muted: #6E655E;
+  --color-text-muted-rgb: 110, 101, 94;
   --color-accent: #8B0000;
   --color-accent-rgb: 139, 0, 0;
   --color-accent-hover: #650000;

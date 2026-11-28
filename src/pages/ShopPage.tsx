@@ -1,33 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Sliders, ChevronDown } from 'lucide-react';
-import ProductCard from '@/components/ProductCard';
-import type { Product } from '@/types';
+import { ChevronDown, Filter, Search, Sliders, X } from 'lucide-react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Product } from '@/types';
 import { cn } from '@/lib/utils';
-
-type SortBy = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating';
-
-const categoryOptions = ['All', 'Outerwear', 'Dresses', 'Tailoring', 'Knitwear', 'Accessories', 'Footwear', 'Shirts', 'Trousers'];
-const sizeOptions = ['XS', 'S', 'M', 'L', 'XL'];
-const colorOptions = ['Ivory', 'Black', 'Crimson', 'Stone', 'Olive', 'Navy'];
-
-const fallbackImages = [
-  'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1509967419530-da38b4704bc6?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1533867617858-e7b97e060509?auto=format&fit=crop&w=800&q=80',
-];
+import ProductCard from '@/components/ProductCard';
 
 export function ShopPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('All');
-  const [size, setSize] = useState('');
-  const [color, setColor] = useState('');
-  const [sortBy, setSortBy] = useState<SortBy>('featured');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
+  const [category, setCategory] = useState('all');
+  const [size, setSize] = useState('all');
+  const [color, setColor] = useState('all');
+  const [sortBy, setSortBy] = useState<'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating'>('featured');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,9 +21,9 @@ export function ShopPage() {
       try {
         setLoading(true);
         const res = await fetch('/api/products');
-        const json = await res.json().catch(() => ({}));
-        const payload = Array.isArray(json?.data) ? json.data : Array.isArray(json?.products) ? json.products : Array.isArray(json?.items) ? json.items : [];
-        if (active) setProducts(payload ?? []);
+        const json = await res.json().catch(() => null);
+        const data = (json?.data ?? json ?? []) as Product[];
+        if (active) setProducts(Array.isArray(data) ? data : []);
       } catch {
         if (active) setProducts([]);
       } finally {
@@ -51,174 +36,195 @@ export function ShopPage() {
     };
   }, []);
 
-  const normalizedProducts = useMemo(() => {
-    return (products ?? []).map((product, index) => ({
-      ...product,
-      image: product?.image || fallbackImages[index % fallbackImages.length],
-      category: product?.category ?? 'Accessories',
-    }));
-  }, [products]);
+  const categories = useMemo(() => ['all', ...new Set(products.map((p) => (p.category ?? '').trim()).filter(Boolean))], [products]);
+  const sizes = useMemo(() => ['all', ...new Set(products.flatMap((p) => p.sizes ?? []).filter(Boolean))], [products]);
+  const colors = useMemo(() => ['all', ...new Set(products.map((p) => (p.color ?? '').trim()).filter(Boolean))], [products]);
 
-  const filteredProducts = useMemo(() => {
+  const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const min = minPrice === '' ? Number.NEGATIVE_INFINITY : Number(minPrice);
-    const max = maxPrice === '' ? Number.POSITIVE_INFINITY : Number(maxPrice);
-
-    const list = normalizedProducts.filter((product) => {
-      const categoryMatch = category === 'All' || String(product?.category ?? '').toLowerCase() === category.toLowerCase();
-      const sizeMatch = !size || (product?.sizes ?? []).some((s) => String(s ?? '').toLowerCase() === size.toLowerCase());
-      const colorMatch = !color || (product?.colors ?? []).some((c) => String(c ?? '').toLowerCase() === color.toLowerCase());
-      const priceMatch = (product?.price ?? 0) >= min && (product?.price ?? 0) <= max;
-      const textMatch =
+    const list = products.filter((p) => {
+      const matchesQuery =
         !q ||
-        [product?.name, product?.category, product?.description, product?.material]
-          .filter(Boolean)
-          .some((value) => String(value ?? '').toLowerCase().includes(q));
-      return categoryMatch && sizeMatch && colorMatch && priceMatch && textMatch;
+        [p.name, p.description, p.category, p.collection, p.material, p.color].some((v) => (v ?? '').toLowerCase().includes(q));
+      const matchesCategory = category === 'all' || (p.category ?? '').toLowerCase() === category.toLowerCase();
+      const matchesSize = size === 'all' || (p.sizes ?? []).some((s) => s.toLowerCase() === size.toLowerCase());
+      const matchesColor = color === 'all' || (p.color ?? '').toLowerCase() === color.toLowerCase();
+      return matchesQuery && matchesCategory && matchesSize && matchesColor;
     });
-
     return [...list].sort((a, b) => {
-      if (sortBy === 'price-asc') return (a?.price ?? 0) - (b?.price ?? 0);
-      if (sortBy === 'price-desc') return (b?.price ?? 0) - (a?.price ?? 0);
-      if (sortBy === 'rating') return (b?.rating ?? 0) - (a?.rating ?? 0);
-      if (sortBy === 'newest') return new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime();
-      return Number(Boolean(b?.featured)) - Number(Boolean(a?.featured));
+      if (sortBy === 'price-asc') return (a.price ?? 0) - (b.price ?? 0);
+      if (sortBy === 'price-desc') return (b.price ?? 0) - (a.price ?? 0);
+      if (sortBy === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
+      if (sortBy === 'newest') return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+      return Number(b.featured ?? false) - Number(a.featured ?? false) || new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
     });
-  }, [normalizedProducts, query, category, size, color, minPrice, maxPrice, sortBy]);
+  }, [products, query, category, size, color, sortBy]);
 
   const clearFilters = () => {
     setQuery('');
-    setCategory('All');
-    setSize('');
-    setColor('');
-    setMinPrice('');
-    setMaxPrice('');
+    setCategory('all');
+    setSize('all');
+    setColor('all');
     setSortBy('featured');
   };
 
   return (
     <main className="bg-[#F9F7F6] text-[#2E2E2E]">
-      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <section className="border-b border-[#C9BDB2] bg-[#EEE8E2]">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6E655E]">Catalog</p>
+              <h1 className="mt-3 font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl lg:text-6xl">
+                Shop the NDDN edit
+              </h1>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-[#6E655E] sm:text-base">
+                A live collection of refined silhouettes, tactile tailoring, and seasonal statements curated for a fine-paper canvas.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.25em] text-[#6E655E]">
+              <span>{filtered.length} results</span>
+              <span className="h-1 w-1 rounded-full bg-[#8B0000]" />
+              <span>{loading ? 'Updating' : 'Live inventory'}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="border border-[#C9BEB4] bg-[#F1ECE7] p-4">
-            <div className="flex items-center justify-between gap-3 border-b border-[#C9BEB4] pb-3">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Filters</p>
-                <h1 className="truncate font-['Playfair_Display'] text-2xl font-light tracking-tight">Shop the edit</h1>
+          <aside className="min-w-0 border border-[#C9BDB2] bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Filter className="h-4 w-4 shrink-0" />
+                <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.25em]">Filters</h2>
               </div>
-              <Sliders className="h-4 w-4 shrink-0 text-[#8B0000]" />
+              <button onClick={clearFilters} className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B0000]">
+                Reset
+              </button>
             </div>
 
-            <div className="mt-4 flex flex-col gap-4">
-              <label className="flex flex-col gap-2.5">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Search</span>
-                <div className="flex items-center gap-2 border border-[#C9BEB4] bg-[#F9F7F6] px-3 py-2">
-                  <Search className="h-4 w-4 shrink-0 text-[#6F665F]" />
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search collection" className="w-full bg-transparent text-sm outline-none placeholder:text-[#6F665F]" />
-                </div>
-              </label>
-
-              <div className="flex flex-col gap-2.5">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Category</span>
-                <div className="flex flex-wrap gap-2">
-                  {categoryOptions.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setCategory(item)}
-                      className={cn(
-                        'min-w-0 border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] transition',
-                        category === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BEB4] bg-[#F9F7F6] text-[#2E2E2E]'
-                      )}
-                    >
-                      <span className="block truncate">{item}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Search</label>
+              <div className="flex items-center gap-2 border border-[#C9BDB2] bg-[#F9F7F6] px-3 py-2">
+                <Search className="h-4 w-4 shrink-0 text-[#6E655E]" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search products"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-[#6E655E]"
+                />
               </div>
+            </div>
 
-              <div className="flex flex-col gap-2.5">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Size</span>
-                <div className="flex flex-wrap gap-2">
-                  {sizeOptions.map((item) => (
-                    <button key={item} type="button" onClick={() => setSize(size === item ? '' : item)} className={cn('border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition', size === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BEB4] bg-[#F9F7F6] text-[#2E2E2E]')}>
-                      {item}
-                    </button>
-                  ))}
-                </div>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Category</label>
+              <div className="flex flex-wrap gap-2">
+                {categories.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setCategory(item)}
+                    className={cn(
+                      'min-w-0 border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] transition',
+                      category === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
+                    )}
+                  >
+                    <span className="block max-w-full truncate">{item === 'all' ? 'All' : item}</span>
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="flex flex-col gap-2.5">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Color</span>
-                <div className="flex flex-wrap gap-2">
-                  {colorOptions.map((item) => (
-                    <button key={item} type="button" onClick={() => setColor(color === item ? '' : item)} className={cn('border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition', color === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BEB4] bg-[#F9F7F6] text-[#2E2E2E]')}>
-                      {item}
-                    </button>
-                  ))}
-                </div>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Size</label>
+              <div className="flex flex-wrap gap-2">
+                {sizes.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setSize(item)}
+                    className={cn(
+                      'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition',
+                      size === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
+                    )}
+                  >
+                    {item === 'all' ? 'All' : item}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-2.5">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Min</span>
-                  <input value={minPrice} onChange={(e) => setMinPrice(e.target.value)} inputMode="numeric" placeholder="0" className="border border-[#C9BEB4] bg-[#F9F7F6] px-3 py-2 text-sm outline-none" />
-                </label>
-                <label className="flex flex-col gap-2.5">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Max</span>
-                  <input value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} inputMode="numeric" placeholder="99999" className="border border-[#C9BEB4] bg-[#F9F7F6] px-3 py-2 text-sm outline-none" />
-                </label>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Color</label>
+              <div className="flex flex-wrap gap-2">
+                {colors.map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => setColor(item)}
+                    className={cn(
+                      'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition',
+                      color === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
+                    )}
+                  >
+                    {item === 'all' ? 'All' : item}
+                  </button>
+                ))}
               </div>
-
-              <button type="button" onClick={clearFilters} className="border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#650000]">
-                Reset filters
-              </button>
             </div>
           </aside>
 
           <section className="min-w-0">
-            <div className="mb-5 flex flex-col gap-3 border-b border-[#C9BEB4] pb-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Catalog</p>
-                <h2 className="truncate font-['Playfair_Display'] text-3xl font-light tracking-tight">Curated pieces</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">{filteredProducts.length} items</span>
-                <div className="relative">
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="appearance-none border border-[#C9BEB4] bg-[#F9F7F6] px-3 py-2 pr-8 text-xs font-semibold uppercase tracking-[0.18em] outline-none">
-                    <option value="featured">Featured</option>
-                    <option value="newest">Newest</option>
-                    <option value="price-asc">Price: Low to High</option>
-                    <option value="price-desc">Price: High to Low</option>
-                    <option value="rating">Top Rated</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6F665F]" />
-                </div>
-              </div>
+            <div className="mb-4 flex flex-col gap-3 border-b border-[#C9BDB2] pb-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-[#6E655E]">{filtered.length} pieces curated for your current selection</p>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button className="inline-flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]">
+                    Sort
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="z-50 min-w-44 border border-[#C9BDB2] bg-white p-1 shadow-lg">
+                    {[
+                      ['featured', 'Featured'],
+                      ['newest', 'Newest'],
+                      ['price-asc', 'Price: Low to High'],
+                      ['price-desc', 'Price: High to Low'],
+                      ['rating', 'Top Rated'],
+                    ].map(([value, label]) => (
+                      <DropdownMenu.Item
+                        key={value}
+                        onSelect={() => setSortBy(value as typeof sortBy)}
+                        className={cn(
+                          'cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] outline-none hover:bg-[#EEE8E2]',
+                          sortBy === value && 'bg-[#EEE8E2]'
+                        )}
+                      >
+                        {label}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
             </div>
 
-            {loading ? (
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="aspect-[3/4] animate-pulse border border-[#C9BEB4] bg-[#F1ECE7]" />
-                ))}
+            {filtered.length === 0 ? (
+              <div className="flex min-h-[40vh] flex-col items-center justify-center border border-dashed border-[#C9BDB2] bg-white px-6 py-16 text-center">
+                <X className="h-8 w-8 text-[#8B0000]" />
+                <h3 className="mt-4 font-['Playfair_Display'] text-2xl font-light">No pieces match your edit</h3>
+                <p className="mt-2 max-w-md text-sm leading-7 text-[#6E655E]">Try a broader search or clear the filters to reveal the full collection.</p>
+                <button onClick={clearFilters} className="mt-6 border border-[#8B0000] bg-[#8B0000] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white">
+                  Clear filters
+                </button>
               </div>
             ) : (
-              <motion.div layout className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredProducts.map((product) => (
-                  <motion.div key={product?.id ?? product?.slug ?? `${product?.name ?? 'product'}-${product?.price ?? 0}`} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -18 }} transition={{ duration: 0.35 }}>
+              <motion.div layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {filtered.map((product) => (
+                  <motion.div key={product.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
                     <ProductCard product={product} />
                   </motion.div>
                 ))}
               </motion.div>
             )}
-
-            {!loading && filteredProducts.length === 0 ? (
-              <div className="mt-8 border border-[#C9BEB4] bg-[#F1ECE7] p-8 text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">No results</p>
-                <p className="mt-2 font-['Playfair_Display'] text-2xl font-light tracking-tight">Refine your search or reset the filters.</p>
-              </div>
-            ) : null}
           </section>
         </div>
       </section>

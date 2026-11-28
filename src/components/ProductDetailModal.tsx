@@ -1,254 +1,162 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Check, ChevronRight, Heart, ShoppingCart, X } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, ArrowRight, Check, Heart, Minus, Plus, ShoppingBag, X } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
 import type { Product, Review } from '@/types';
 
-type Props = { open?: boolean; onOpenChange?: (open: boolean) => void; className?: string };
-type AuthClient = { getSession?: () => Promise<{ data?: { user?: { id?: string; email?: string; name?: string } | null } }>; signIn?: (p: { email: string; password: string }) => Promise<unknown> };
-const authClient = (globalThis as { authClient?: AuthClient }).authClient;
-
-const fallbackProduct: Product = {
-  id: 'fallback',
-  slug: 'signature-tailored-coat',
-  name: 'Signature Tailored Coat',
-  category: 'Outerwear',
-  price: 18900,
-  currency: '₹',
-  description: 'A sculpted coat in a warm neutral wool blend with a clean shoulder and fluid drape.',
-  image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85',
-  gallery: [
-    'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85',
-    'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85',
-    'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80',
-  ],
-  sizes: ['XS', 'S', 'M', 'L'],
-  colors: ['Oat', 'Espresso', 'Crimson'],
-  material: 'Wool blend',
-  inStock: true,
-  rating: 4.8,
-  reviewCount: 18,
+type Props = {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  product?: Product;
 };
 
-function ProductGallery({ images = [], name = '' }: { images?: string[]; name?: string }) {
-  const list = images.length ? images : [fallbackProduct.image, ...(fallbackProduct.gallery ?? [])];
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {list.slice(0, 4).map((src, i) => (
-        <motion.div key={`${src}-${i}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: i * 0.05 }} className={cn('overflow-hidden border border-[#C9BEB4] bg-white', i === 0 ? 'col-span-2 aspect-[4/5]' : 'aspect-[3/4]')}>
-          <img src={src} alt={`${name} ${i + 1}`} crossOrigin="anonymous" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
-        </motion.div>
-      ))}
-    </div>
-  );
-}
+const fallbackImages = [
+  'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85',
+  'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85',
+  'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85',
+];
 
-function ProductDetailView({ className = '' }: { className?: string }) {
-  const { id } = useParams();
+export function ProductDetailModal({ open = false, onOpenChange = () => {}, product }: Props) {
+  const params = useParams();
   const navigate = useNavigate();
-  const { addItem } = useCart() as { addItem?: (product: Product, quantity?: number, size?: string, color?: string) => void };
-  const [product, setProduct] = useState<Product | null>(null);
+  const location = useLocation();
+  const { addItem } = useCart() as any;
+  const [liveProduct, setLiveProduct] = useState<Product | null>(product ?? null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [qty, setQty] = useState(1);
   const [size, setSize] = useState('');
   const [color, setColor] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [reviewBody, setReviewBody] = useState('');
-  const [reviewTitle, setReviewTitle] = useState('');
-  const [rating, setRating] = useState(5);
-  const [submitting, setSubmitting] = useState(false);
-  const [user, setUser] = useState<{ id?: string; email?: string; name?: string } | null>(null);
+  const [activeImage, setActiveImage] = useState(0);
+  const id = params?.id ?? product?.id ?? '';
+  const isRoute = location?.pathname?.includes('/products/') ?? false;
+  const current = liveProduct ?? product ?? null;
+  const images = useMemo(() => (current?.images?.length ? current.images : [{ url: current?.image ?? fallbackImages[0], alt: current?.name ?? 'Product image' }, { url: fallbackImages[1], alt: current?.name ?? 'Alternate view' }, { url: fallbackImages[2], alt: current?.name ?? 'Detail view' }]), [current]);
 
   useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const [pRes, rRes, session] = await Promise.all([
-          fetch(`/api/products/${id ?? ''}`),
-          fetch(`/api/reviews?productId=${encodeURIComponent(id ?? '')}`),
-          authClient?.getSession?.().catch(() => null) ?? Promise.resolve(null),
-        ]);
-        const pJson = (await pRes.json().catch(() => ({}))) as { data?: Product };
-        const rJson = (await rRes.json().catch(() => ({}))) as { data?: Review[] };
-        if (!active) return;
-        setProduct(pJson?.data ?? fallbackProduct);
-        setReviews(rJson?.data ?? []);
-        setUser(session?.data?.user ?? null);
-        setSize((pJson?.data?.sizes?.[0] ?? fallbackProduct.sizes?.[0] ?? 'M') as string);
-        setColor((pJson?.data?.colors?.[0] ?? fallbackProduct.colors?.[0] ?? 'Oat') as string);
-      } catch {
-        if (active) {
-          setProduct(fallbackProduct);
-          setReviews([]);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [id]);
+    const controller = new AbortController();
+    if (!id) return;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/products/${id}`, { signal: controller.signal }).then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/products/${id}/reviews`, { signal: controller.signal }).then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([p, rev]) => {
+      setLiveProduct((p?.data ?? p ?? product ?? null) as Product | null);
+      setReviews((rev?.data ?? rev ?? []) as Review[]);
+    }).finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [id, product]);
 
-  const images = useMemo(() => [product?.image ?? fallbackProduct.image, ...(product?.gallery ?? fallbackProduct.gallery ?? [])], [product]);
+  useEffect(() => {
+    setActiveImage(0);
+    setQty(1);
+    setSize(current?.sizes?.[0] ?? '');
+    setColor(current?.color ?? '');
+  }, [current?.id]);
+
   const handleAdd = () => {
-    if (!product) return;
-    if (!product.inStock) return toast.error('This piece is currently unavailable.');
-    addItem?.(product, 1, size || product.sizes?.[0] || '', color || product.colors?.[0] || '');
+    if (!current) return;
+    addItem?.({ productId: current.id, name: current.name ?? 'Item', price: current.price ?? 0, quantity: qty, image: images?.[0]?.url ?? current.image, size: size || undefined, color: color || undefined, product: current });
     toast.success('Added to cart');
-  };
-
-  const submitReview = async () => {
-    if (!user?.email) return toast.error('Please sign in to leave a review.');
-    if (!reviewBody.trim()) return toast.error('Write a review first.');
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product?.id ?? id, userName: user?.name ?? user?.email ?? 'Guest', rating, title: reviewTitle, body: reviewBody }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { data?: Review; error?: string };
-      if (!res.ok) throw new Error(json?.error ?? 'Unable to submit review');
-      setReviews((prev) => [json?.data ?? { id: crypto.randomUUID(), productId: product?.id ?? id ?? '', userName: user?.name ?? user?.email ?? 'Guest', rating, title: reviewTitle, body: reviewBody, createdAt: new Date().toISOString() }, ...prev]);
-      setReviewBody('');
-      setReviewTitle('');
-      setRating(5);
-      toast.success('Review published');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to submit review');
-    } finally {
-      setSubmitting(false);
-    }
+    if (isRoute) navigate('/shop');
   };
 
   const content = (
-    <div className={cn('mx-auto w-full max-w-7xl px-4 py-6 md:px-6 lg:px-8', className)}>
-      <div className="mb-4 flex items-center justify-between border-b border-[#C9BEB4] pb-3">
-        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F] transition hover:text-[#2E2E2E]">
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
-        <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">
-          <span>{product?.category ?? fallbackProduct.category}</span>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span>{product?.name ?? fallbackProduct.name}</span>
+    <div className="mx-auto w-full max-w-6xl overflow-hidden border border-[#C9BDB2] bg-[#F9F7F6] text-[#2E2E2E] shadow-2xl">
+      <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="border-b border-[#C9BDB2] lg:border-b-0 lg:border-r">
+          <div className="relative aspect-[4/5] overflow-hidden bg-[#EEE8E2]">
+            <AnimatePresence mode="wait">
+              <motion.img key={images?.[activeImage]?.url ?? 'img'} src={images?.[activeImage]?.url ?? fallbackImages[0]} alt={images?.[activeImage]?.alt ?? current?.name ?? 'Product'} crossOrigin="anonymous" initial={{ opacity: 0, scale: 1.03 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.45 }} className="h-full w-full object-cover" />
+            </AnimatePresence>
+            <div className="absolute left-4 top-4 flex items-center gap-2 bg-[#F9F7F6]/90 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#6E655E]">
+              <span>{current?.collection ?? 'Collection'}</span>
+              <span className="h-1 w-1 rounded-full bg-[#8B0000]" />
+              <span>{loading ? 'Loading' : 'Live'}</span>
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto border-t border-[#C9BDB2] p-3">
+            {images?.map((img, index) => (
+              <button key={`${img?.url ?? index}`} type="button" onClick={() => setActiveImage(index)} className={cn('h-20 w-16 shrink-0 overflow-hidden border border-[#C9BDB2] bg-white transition', activeImage === index ? 'ring-1 ring-[#8B0000]' : 'opacity-70')}>
+                <img src={img?.url ?? fallbackImages[index % fallbackImages.length]} alt={img?.alt ?? current?.name ?? 'Thumbnail'} crossOrigin="anonymous" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-col gap-5 p-5 lg:p-7">
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-[#6E655E]">{current?.category ?? 'Editorial Piece'}</p>
+            <h2 className="font-['Playfair_Display'] text-3xl font-light tracking-tight text-[#2E2E2E] sm:text-4xl">{current?.name ?? 'Untitled Product'}</h2>
+            <div className="flex items-end gap-3">
+              <p className="text-2xl font-semibold text-[#8B0000]">₹{Number(current?.price ?? 0).toLocaleString('en-IN')}</p>
+              {current?.compareAtPrice ? <p className="text-sm text-[#6E655E] line-through">₹{Number(current.compareAtPrice).toLocaleString('en-IN')}</p> : null}
+            </div>
+            <p className="max-w-prose text-sm leading-7 text-[#6E655E]">{current?.description ?? 'A refined silhouette with tactile finish and editorial presence.'}</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655E]">
+              Size
+              <select value={size} onChange={(e) => setSize(e.target.value)} className="border border-[#C9BDB2] bg-white px-3 py-3 text-sm text-[#2E2E2E] outline-none">
+                {(current?.sizes?.length ? current.sizes : ['S', 'M', 'L']).map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655E]">
+              Color
+              <input value={color} onChange={(e) => setColor(e.target.value)} className="border border-[#C9BDB2] bg-white px-3 py-3 text-sm text-[#2E2E2E] outline-none" placeholder={current?.color ?? 'Stone'} />
+            </label>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center border border-[#C9BDB2]">
+              <button type="button" onClick={() => setQty((v) => Math.max(1, v - 1))} className="px-3 py-3 text-[#2E2E2E]"><Minus className="h-4 w-4" /></button>
+              <span className="min-w-12 px-4 text-center text-sm font-semibold">{qty}</span>
+              <button type="button" onClick={() => setQty((v) => v + 1)} className="px-3 py-3 text-[#2E2E2E]"><Plus className="h-4 w-4" /></button>
+            </div>
+            <button type="button" onClick={handleAdd} className="inline-flex flex-1 items-center justify-center gap-2 bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition hover:bg-[#650000]">
+              <ShoppingBag className="h-4 w-4" /> Add to cart
+            </button>
+          </div>
+          <div className="grid gap-3 border-t border-[#C9BDB2] pt-5">
+            <div className="flex items-center justify-between text-sm"><span className="text-[#6E655E]">Material</span><span className="font-medium">{current?.material ?? 'Fine weave'}</span></div>
+            <div className="flex items-center justify-between text-sm"><span className="text-[#6E655E]">Availability</span><span className="inline-flex items-center gap-2 font-medium">{current?.inStock ?? true ? <Check className="h-4 w-4 text-[#8B0000]" /> : <X className="h-4 w-4 text-[#6E655E]" />}{current?.inStock ?? true ? 'In stock' : 'Sold out'}</span></div>
+          </div>
+          <div className="border-t border-[#C9BDB2] pt-5">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">Reviews</h3>
+            <div className="space-y-3">
+              {(reviews?.length ? reviews : [{ id: '1', productId: current?.id ?? '0', userName: 'Editorial Client', rating: 5, title: 'Beautiful drape', body: 'The finish feels luxurious and the fit is precise.' }]).slice(0, 2).map((review) => (
+                <div key={review?.id} className="border border-[#C9BDB2] bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">{review?.userName ?? 'Guest'}</p>
+                    <p className="text-xs text-[#6E655E]">{'★'.repeat(Math.max(1, Math.min(5, review?.rating ?? 5)))}</p>
+                  </div>
+                  <p className="mt-1 text-sm font-medium">{review?.title ?? 'Review'}</p>
+                  <p className="mt-1 text-sm leading-6 text-[#6E655E]">{review?.body ?? 'A considered piece with strong editorial presence.'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-      {loading ? (
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="aspect-[4/5] animate-pulse bg-[#F1ECE7]" />
-          <div className="space-y-4">
-            <div className="h-8 w-2/3 animate-pulse bg-[#F1ECE7]" />
-            <div className="h-4 w-full animate-pulse bg-[#F1ECE7]" />
-            <div className="h-4 w-5/6 animate-pulse bg-[#F1ECE7]" />
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-          <ProductGallery images={images} name={product?.name ?? fallbackProduct.name} />
-          <div className="min-w-0">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">{product?.category ?? fallbackProduct.category}</p>
-            <h1 className="font-['Playfair_Display'] text-4xl font-light tracking-tight text-[#2E2E2E] md:text-6xl">{product?.name ?? fallbackProduct.name}</h1>
-            <div className="mt-4 flex items-center gap-3 text-sm text-[#6F665F]">
-              <span className="font-semibold text-[#2E2E2E]">{product?.currency ?? '₹'}{(product?.price ?? fallbackProduct.price).toLocaleString()}</span>
-              <span className="h-1 w-1 rounded-full bg-[#C9BEB4]" />
-              <span>{product?.rating ?? fallbackProduct.rating} rating</span>
-              <span className="h-1 w-1 rounded-full bg-[#C9BEB4]" />
-              <span>{product?.reviewCount ?? reviews.length} reviews</span>
-            </div>
-            <p className="mt-5 max-w-xl text-sm leading-7 text-[#6F665F]">{product?.description ?? fallbackProduct.description}</p>
-            <div className="mt-6 space-y-5 border-t border-[#C9BEB4] pt-5">
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Size</p>
-                <div className="flex flex-wrap gap-2">
-                  {(product?.sizes ?? fallbackProduct.sizes ?? []).map((s) => (
-                    <button key={s} onClick={() => setSize(s)} className={cn('min-w-0 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition', size === s ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BEB4] bg-white text-[#2E2E2E]')}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Color</p>
-                <div className="flex flex-wrap gap-2">
-                  {(product?.colors ?? fallbackProduct.colors ?? []).map((c) => (
-                    <button key={c} onClick={() => setColor(c)} className={cn('min-w-0 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition', color === c ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BEB4] bg-white text-[#2E2E2E]')}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button onClick={handleAdd} className="inline-flex items-center gap-2 bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#650000]">
-                  <ShoppingCart className="h-4 w-4" /> Add to cart
-                </button>
-                <button className="inline-flex items-center gap-2 border border-[#C9BEB4] bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#2E2E2E] transition hover:border-[#8B0000] hover:text-[#8B0000]">
-                  <Heart className="h-4 w-4" /> Save
-                </button>
-              </div>
-            </div>
-            <div className="mt-8 border-t border-[#C9BEB4] pt-6">
-              <h2 className="font-['Playfair_Display'] text-2xl font-light text-[#2E2E2E]">Reviews</h2>
-              <div className="mt-4 space-y-4">
-                {reviews.slice(0, 4).map((review) => (
-                  <div key={review.id} className="border border-[#C9BEB4] bg-white p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-[#2E2E2E]">{review.userName}</p>
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]"><Check className="h-3.5 w-3.5" /> {review.rating}/5</span>
-                    </div>
-                    <p className="mt-2 text-sm text-[#6F665F]">{review.title ?? 'Review'}</p>
-                    <p className="mt-1 text-sm leading-6 text-[#2E2E2E]">{review.body}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-5 border border-[#C9BEB4] bg-[#F1ECE7] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Write a review</p>
-                <div className="mt-3 grid gap-3">
-                  <input value={reviewTitle} onChange={(e) => setReviewTitle(e.target.value)} placeholder="Title" className="w-full border border-[#C9BEB4] bg-white px-3 py-2 text-sm text-[#2E2E2E] outline-none" />
-                  <textarea value={reviewBody} onChange={(e) => setReviewBody(e.target.value)} placeholder="Your thoughts" rows={4} className="w-full border border-[#C9BEB4] bg-white px-3 py-2 text-sm text-[#2E2E2E] outline-none" />
-                  <div className="flex items-center gap-2">
-                    {[5, 4, 3, 2, 1].map((n) => (
-                      <button key={n} onClick={() => setRating(n)} className={cn('text-xs font-semibold uppercase tracking-[0.2em]', rating === n ? 'text-[#8B0000]' : 'text-[#6F665F]')}>
-                        {n}
-                      </button>
-                    ))}
-                    <button onClick={submitReview} disabled={submitting} className="ml-auto inline-flex items-center gap-2 bg-[#8B0000] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white disabled:opacity-60">
-                      {submitting ? 'Publishing' : 'Publish'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 
-  return content;
-}
+  if (isRoute) return <div className="min-h-screen bg-[#F9F7F6] px-4 py-6 sm:px-6 lg:px-8">{content}</div>;
 
-export function ProductDetailModal({ open = false, onOpenChange = () => {}, className = '' }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
-        <Dialog.Content className={cn('fixed inset-0 z-50 overflow-y-auto bg-[#F9F7F6] outline-none', className)}>
-          <div className="sticky top-0 z-10 border-b border-[#C9BEB4] bg-[#F9F7F6]/95 backdrop-blur">
-            <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6 lg:px-8">
-              <Dialog.Title className="font-['Playfair_Display'] text-lg font-light tracking-tight text-[#2E2E2E]">Product Detail</Dialog.Title>
-              <Dialog.Close asChild>
-                <button className="inline-flex h-10 w-10 items-center justify-center border border-[#C9BEB4] bg-white text-[#2E2E2E] transition hover:border-[#8B0000] hover:text-[#8B0000]">
-                  <X className="h-4 w-4" />
-                </button>
-              </Dialog.Close>
-            </div>
-          </div>
-          <ProductDetailView className={className} />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
+        <Dialog.Content className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+          <motion.div initial={{ opacity: 0, y: 18, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 18, scale: 0.98 }} transition={{ duration: 0.25 }} className="w-full">
+            <Dialog.Title className="sr-only">{current?.name ?? 'Product detail'}</Dialog.Title>
+            {content}
+          </motion.div>
+          <Dialog.Close className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center border border-[#C9BDB2] bg-[#F9F7F6] text-[#2E2E2E]">
+            <X className="h-4 w-4" />
+          </Dialog.Close>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

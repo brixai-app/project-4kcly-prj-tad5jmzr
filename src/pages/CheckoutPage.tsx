@@ -1,222 +1,200 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, CreditCard, Mail, MapPin, Phone, Truck, User } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CreditCard, Lock, MapPin, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCart } from '@/context/CartContext';
-import type { Address, CheckoutPayload } from '@/types';
+import type { CheckoutAddressPayload, CheckoutPayload, Order } from '@/types';
+
+type FieldErrors = Partial<Record<'name' | 'email' | 'line1' | 'city' | 'postalCode' | 'country' | 'paymentMethod', string>>;
+
+const initialAddress = { name: '', line1: '', line2: '', city: '', state: '', postalCode: '', country: 'India', phone: '' };
+const paymentMethods: Array<{ value: 'card' | 'upi' | 'cod'; label: string }> = [
+  { value: 'card', label: 'Card' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'cod', label: 'Cash on delivery' },
+];
 
 export function CheckoutPage() {
   const navigate = useNavigate();
-  const { items = [], clearCart = () => {} } = useCart() as any;
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [form, setForm] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    line1: '',
-    line2: '',
-    city: '',
-    state: '',
-    postalCode: '',
-    country: 'India',
-    cardNumber: '',
-    expiry: '',
-    cvv: '',
-  });
-
-  const subtotal = useMemo(() => items.reduce((sum: number, item: any) => sum + (item?.price ?? 0) * (item?.quantity ?? 0), 0), [items]);
-  const shipping = subtotal > 0 ? 0 : 0;
-  const tax = Math.round(subtotal * 0.18);
-  const total = subtotal + shipping + tax;
-
-  const luhn = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    let sum = 0;
-    let alt = false;
-    for (let i = digits.length - 1; i >= 0; i -= 1) {
-      let n = Number(digits[i] ?? 0);
-      if (alt) {
-        n *= 2;
-        if (n > 9) n -= 9;
-      }
-      sum += n;
-      alt = !alt;
-    }
-    return digits.length >= 12 && sum % 10 === 0;
+  const { items, clearCart, subtotal } = useCart() as {
+    items?: Array<{ productId: string; quantity: number; size?: string; color?: string; name?: string; price?: number; image?: string }>;
+    clearCart?: () => void;
+    subtotal?: number;
   };
+  const [shipping, setShipping] = useState(initialAddress);
+  const [billingSame, setBillingSame] = useState(true);
+  const [billing, setBilling] = useState(initialAddress);
+  const [email, setEmail] = useState('');
+  const [notes, setNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi' | 'cod'>('card');
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const cartItems = items ?? [];
+  const cartSubtotal = subtotal ?? cartItems.reduce((sum, item) => sum + (item.price ?? 0) * (item.quantity ?? 0), 0);
+  const shippingFee = cartSubtotal > 25000 ? 0 : cartSubtotal > 0 ? 499 : 0;
+  const tax = Math.round(cartSubtotal * 0.05);
+  const total = cartSubtotal + shippingFee + tax;
+
+  useEffect(() => {
+    if (cartItems.length === 0) navigate('/shop');
+  }, [cartItems.length, navigate]);
 
   const validate = () => {
-    const expiryMatch = /^(\d{2})\/(\d{2})$/.exec(form.expiry.trim());
-    const month = Number(expiryMatch?.[1] ?? 0);
-    const year = Number(`20${expiryMatch?.[2] ?? '00'}`);
-    const now = new Date();
-    const expiryValid = !!expiryMatch && month >= 1 && month <= 12 && new Date(year, month, 0) >= new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const cvvValid = /^\d{3,4}$/.test(form.cvv.trim());
-    const postalValid = form.postalCode.trim().length >= 4;
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
-    const required = [form.fullName, form.email, form.line1, form.city, form.country].every((v) => v.trim().length > 0);
-    if (!required) return 'Please complete all required fields.';
-    if (!emailValid) return 'Please enter a valid email address.';
-    if (!postalValid) return 'Please enter a valid ZIP or postal code.';
-    if (!luhn(form.cardNumber)) return 'Please enter a valid card number.';
-    if (!expiryValid) return 'Please enter a valid expiry date in MM/YY format.';
-    if (!cvvValid) return 'Please enter a valid CVV.';
-    return '';
+    const next: FieldErrors = {};
+    if (!shipping.name.trim()) next.name = 'Name is required.';
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) next.email = 'Enter a valid email.';
+    if (!shipping.line1.trim()) next.line1 = 'Address line 1 is required.';
+    if (!shipping.city.trim()) next.city = 'City is required.';
+    if (!shipping.postalCode.trim()) next.postalCode = 'Postal code is required.';
+    if (!shipping.country.trim()) next.country = 'Country is required.';
+    if (!paymentMethod) next.paymentMethod = 'Select a payment method.';
+    setErrors(next);
+    return Object.keys(next).length === 0;
   };
 
-  const submitOrder = async () => {
-    const error = validate();
-    if (error) {
-      toast.error(error);
-      return;
-    }
-    if (!items.length) {
-      toast.error('Your cart is empty.');
-      navigate('/shop');
-      return;
-    }
-    setLoading(true);
+  const addressPayload = (a: typeof shipping): CheckoutAddressPayload => ({
+    name: a.name.trim(),
+    line1: a.line1.trim(),
+    line2: a.line2.trim() || undefined,
+    city: a.city.trim(),
+    state: a.state.trim() || undefined,
+    postalCode: a.postalCode.trim(),
+    country: a.country.trim(),
+    phone: a.phone.trim() || undefined,
+  });
+
+  const canSubmit = useMemo(() => cartItems.length > 0 && !!email.trim() && !!shipping.name.trim() && !!shipping.line1.trim() && !!shipping.city.trim() && !!shipping.postalCode.trim() && !!shipping.country.trim() && !submitting, [cartItems.length, email, shipping, submitting]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate() || cartItems.length === 0) return;
+    setSubmitting(true);
+    const payload: CheckoutPayload = {
+      items: cartItems.map((item) => ({ productId: item.productId, quantity: item.quantity, size: item.size, color: item.color })),
+      shippingAddress: addressPayload(shipping),
+      billingAddress: billingSame ? undefined : addressPayload(billing),
+      email: email.trim(),
+      notes: notes.trim() || undefined,
+      paymentMethod,
+    };
     try {
-      const shippingAddress: Address = {
-        fullName: form.fullName.trim(),
-        line1: form.line1.trim(),
-        line2: form.line2.trim() || undefined,
-        city: form.city.trim(),
-        state: form.state.trim() || undefined,
-        postalCode: form.postalCode.trim(),
-        country: form.country.trim(),
-        phone: form.phone.trim() || undefined,
-      };
-      const payload: CheckoutPayload = { items, shippingAddress, email: form.email.trim() };
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Checkout failed');
-      clearCart();
-      setSuccess(true);
+      const json = (await res.json().catch(() => null)) as { data?: Order; message?: string; error?: string } | null;
+      if (!res.ok) throw new Error(json?.error ?? json?.message ?? 'Unable to place order.');
       toast.success('Order placed successfully.');
-      setTimeout(() => navigate('/'), 1200);
-    } catch {
-      toast.error('Unable to place order. Please try again.');
+      clearCart?.();
+      navigate('/shop');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Checkout failed.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const Field = ({ label, value, onChange, type = 'text', placeholder = '', required = false }: any) => (
-    <label className="flex flex-col gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#68625C]">
-        {label}{required ? ' *' : ''}
-      </span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-sm border border-[#CFC5B8] bg-[#FAF9F6] px-3 py-3 text-sm text-[#1C1C1C] outline-none transition focus:border-[#8B0000]"
-      />
+  const field = (label: string, value: string, onChange: (v: string) => void, error?: string, type = 'text', placeholder = '') => (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6E655E]">{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} type={type} placeholder={placeholder} className="w-full rounded-sm border border-[#C9BDB2] bg-white px-3 py-2 text-sm text-[#2E2E2E] outline-none transition focus:border-[#8B0000]" />
+      {error ? <span className="text-xs text-[#8B0000]">{error}</span> : null}
     </label>
   );
 
   return (
-    <div className="bg-[#F5F1EB] text-[#1C1C1C]">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
-        <section className="space-y-8">
-          <div className="border-b border-[#CFC5B8] pb-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[#8B0000]">Checkout</p>
-            <h1 className="mt-3 font-['Playfair_Display'] text-4xl font-light tracking-tight md:text-5xl">Complete your purchase</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#68625C]">Securely confirm your contact, shipping, billing, and payment details before placing your order.</p>
-          </div>
-
-          {success ? (
-            <div className="flex items-start gap-3 border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-[#8B0000]" />
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em]">Order confirmed</p>
-                <p className="mt-1 text-sm text-[#68625C]">Redirecting you back to the collection.</p>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="grid gap-6">
-            <section className="border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <User className="h-4 w-4 text-[#8B0000]" />
-                <h2 className="text-xs font-semibold uppercase tracking-[0.25em]">Contact</h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Full name" value={form.fullName} onChange={(v: string) => setForm((p) => ({ ...p, fullName: v }))} required />
-                <Field label="Email" type="email" value={form.email} onChange={(v: string) => setForm((p) => ({ ...p, email: v }))} required />
-                <Field label="Phone" type="tel" value={form.phone} onChange={(v: string) => setForm((p) => ({ ...p, phone: v }))} />
-              </div>
-            </section>
-
-            <section className="border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Truck className="h-4 w-4 text-[#8B0000]" />
-                <h2 className="text-xs font-semibold uppercase tracking-[0.25em]">Shipping</h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2"><Field label="Address line 1" value={form.line1} onChange={(v: string) => setForm((p) => ({ ...p, line1: v }))} required /></div>
-                <div className="md:col-span-2"><Field label="Address line 2" value={form.line2} onChange={(v: string) => setForm((p) => ({ ...p, line2: v }))} /></div>
-                <Field label="City" value={form.city} onChange={(v: string) => setForm((p) => ({ ...p, city: v }))} required />
-                <Field label="State" value={form.state} onChange={(v: string) => setForm((p) => ({ ...p, state: v }))} />
-                <Field label="ZIP / Postal code" value={form.postalCode} onChange={(v: string) => setForm((p) => ({ ...p, postalCode: v }))} required />
-                <Field label="Country" value={form.country} onChange={(v: string) => setForm((p) => ({ ...p, country: v }))} required />
-              </div>
-            </section>
-
-            <section className="border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-[#8B0000]" />
-                <h2 className="text-xs font-semibold uppercase tracking-[0.25em]">Payment</h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="md:col-span-2"><Field label="Card number" value={form.cardNumber} onChange={(v: string) => setForm((p) => ({ ...p, cardNumber: v }))} placeholder="1234 5678 9012 3456" required /></div>
-                <Field label="Expiry" value={form.expiry} onChange={(v: string) => setForm((p) => ({ ...p, expiry: v }))} placeholder="MM/YY" required />
-                <Field label="CVV" value={form.cvv} onChange={(v: string) => setForm((p) => ({ ...p, cvv: v }))} placeholder="123" required />
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <aside className="h-fit border border-[#CFC5B8] bg-[#FAF9F6] p-5 lg:sticky lg:top-6">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.25em]">Order summary</h2>
-          <div className="mt-4 space-y-3 border-y border-[#CFC5B8] py-4">
-            {items.map((item: any) => (
-              <div key={item?.id ?? item?.productId ?? item?.name} className="flex items-start gap-3">
-                <div className="h-16 w-12 overflow-hidden bg-[#F5F1EB]">
-                  <img src={item?.image ?? item?.product?.images?.[0]?.url ?? 'https://images.unsplash.com/photo-1509967419530-da38b4704bc6?auto=format&fit=crop&w=800&q=80'} alt={item?.name ?? 'Product'} crossOrigin="anonymous" className="h-full w-full object-cover" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{item?.name ?? 'Item'}</p>
-                  <p className="text-xs text-[#68625C]">Qty {item?.quantity ?? 1}</p>
-                </div>
-                <p className="text-sm font-semibold">₹{((item?.price ?? 0) * (item?.quantity ?? 0)).toLocaleString('en-IN')}</p>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2 py-4 text-sm">
-            <div className="flex justify-between"><span className="text-[#68625C]">Subtotal</span><span>₹{subtotal.toLocaleString('en-IN')}</span></div>
-            <div className="flex justify-between"><span className="text-[#68625C]">Shipping</span><span>{shipping === 0 ? 'Complimentary' : `₹${shipping.toLocaleString('en-IN')}`}</span></div>
-            <div className="flex justify-between"><span className="text-[#68625C]">Tax</span><span>₹{tax.toLocaleString('en-IN')}</span></div>
-            <div className="flex justify-between border-t border-[#CFC5B8] pt-2 text-base font-semibold"><span>Total</span><span>₹{total.toLocaleString('en-IN')}</span></div>
-          </div>
-          <button
-            type="button"
-            onClick={() => submitOrder()}
-            disabled={loading}
-            className="flex w-full items-center justify-center gap-2 bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.25em] text-white transition hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Processing' : 'Place order'}
+    <div className="bg-[#F9F7F6] px-4 py-6 text-[#2E2E2E] sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,1.4fr)_360px]">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <button type="button" onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E] transition hover:text-[#8B0000]">
+            <ArrowLeft className="h-4 w-4" /> Back
           </button>
-          <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-[#68625C]">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            By placing your order, you confirm your shipping and payment details are accurate.
-          </p>
+
+          <section className="rounded-sm border border-[#C9BDB2] bg-white p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-[#8B0000]" />
+              <h1 className="font-['Playfair_Display'] text-3xl font-light tracking-tight">Checkout</h1>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {field('Full name', shipping.name, (v) => setShipping((s) => ({ ...s, name: v })), errors.name)}
+              {field('Email', email, setEmail, errors.email, 'email')}
+              {field('Address line 1', shipping.line1, (v) => setShipping((s) => ({ ...s, line1: v })), errors.line1)}
+              {field('Address line 2', shipping.line2, (v) => setShipping((s) => ({ ...s, line2: v })))}
+              {field('City', shipping.city, (v) => setShipping((s) => ({ ...s, city: v })), errors.city)}
+              {field('State', shipping.state, (v) => setShipping((s) => ({ ...s, state: v })))}
+              {field('Postal code', shipping.postalCode, (v) => setShipping((s) => ({ ...s, postalCode: v })), errors.postalCode)}
+              {field('Country', shipping.country, (v) => setShipping((s) => ({ ...s, country: v })), errors.country)}
+              {field('Phone', shipping.phone, (v) => setShipping((s) => ({ ...s, phone: v })), undefined, 'tel')}
+            </div>
+          </section>
+
+          <section className="rounded-sm border border-[#C9BDB2] bg-white p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-[#8B0000]" />
+              <h2 className="font-['Playfair_Display'] text-2xl font-light tracking-tight">Payment</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {paymentMethods.map((method) => (
+                <button key={method.value} type="button" onClick={() => setPaymentMethod(method.value)} className={`border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition ${paymentMethod === method.value ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-[#F9F7F6] text-[#2E2E2E]'}`}>
+                  {method.label}
+                </button>
+              ))}
+            </div>
+            {errors.paymentMethod ? <p className="mt-2 text-xs text-[#8B0000]">{errors.paymentMethod}</p> : null}
+            <div className="mt-4 rounded-sm border border-[#C9BDB2] bg-[#F9F7F6] p-4 text-sm text-[#6E655E]">
+              <div className="flex items-center gap-2 text-[#2E2E2E]"><Lock className="h-4 w-4" /> Secure payment flow</div>
+              <p className="mt-2">Your order will be processed after submission and confirmation.</p>
+            </div>
+          </section>
+
+          <section className="rounded-sm border border-[#C9BDB2] bg-white p-5">
+            <label className="flex items-start gap-3">
+              <input type="checkbox" checked={billingSame} onChange={(e) => setBillingSame(e.target.checked)} className="mt-1 h-4 w-4 accent-[#8B0000]" />
+              <span className="text-sm text-[#2E2E2E]">Billing address is the same as shipping</span>
+            </label>
+            {!billingSame ? (
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                {field('Billing name', billing.name, (v) => setBilling((s) => ({ ...s, name: v })))}
+                {field('Billing line 1', billing.line1, (v) => setBilling((s) => ({ ...s, line1: v })))}
+                {field('Billing city', billing.city, (v) => setBilling((s) => ({ ...s, city: v })))}
+                {field('Billing postal code', billing.postalCode, (v) => setBilling((s) => ({ ...s, postalCode: v })))}
+              </div>
+            ) : null}
+            <label className="mt-4 flex min-w-0 flex-col gap-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Order notes</span>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} className="w-full rounded-sm border border-[#C9BDB2] bg-white px-3 py-2 text-sm outline-none transition focus:border-[#8B0000]" />
+            </label>
+          </section>
+
+          <button type="submit" disabled={!canSubmit} className="inline-flex items-center justify-center gap-2 bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-50">
+            <CheckCircle2 className="h-4 w-4" /> Place order
+          </button>
+        </form>
+
+        <aside className="lg:sticky lg:top-6 lg:h-fit">
+          <div className="rounded-sm border border-[#C9BDB2] bg-white p-5">
+            <h2 className="font-['Playfair_Display'] text-2xl font-light tracking-tight">Order summary</h2>
+            <div className="mt-4 space-y-3">
+              {cartItems.map((item) => (
+                <div key={`${item.productId}-${item.size ?? 'na'}-${item.color ?? 'na'}`} className="flex items-start justify-between gap-3 border-b border-[#EEE8E2] pb-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{item.name ?? 'Item'}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-[#6E655E]">Qty {item.quantity ?? 1}</p>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold">₹{((item.price ?? 0) * (item.quantity ?? 0)).toLocaleString('en-IN')}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-[#6E655E]">Subtotal</span><span>₹{cartSubtotal.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span className="text-[#6E655E]">Shipping</span><span>₹{shippingFee.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span className="text-[#6E655E]">Tax</span><span>₹{tax.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between border-t border-[#C9BDB2] pt-2 text-base font-semibold"><span>Total</span><span>₹{total.toLocaleString('en-IN')}</span></div>
+            </div>
+            <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[#6E655E]"><Truck className="h-4 w-4" /> Delivery in 3-5 business days</div>
+          </div>
         </aside>
       </div>
     </div>

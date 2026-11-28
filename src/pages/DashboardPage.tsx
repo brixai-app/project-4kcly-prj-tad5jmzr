@@ -1,279 +1,186 @@
-import React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, Clock, History, Lock, Mail, MapPin, Phone, User, Shield, Truck } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertCircle, CheckCircle2, Clock, Edit, Eye, RefreshCw, Shield, ShoppingBag, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSession } from 'better-auth/react';
-import { cn } from '@/lib/utils';
-import type { Order, UserProfile } from '@/types';
+import type { Order, SessionUser, UserProfile } from '@/types';
+
+type SessionShape = { user?: SessionUser | null } | null;
+
+declare const authClient: {
+  useSession?: () => { data?: SessionShape; isPending?: boolean };
+};
+
+const statusTone: Record<string, string> = {
+  pending: 'bg-[#EEE8E2] text-[#2E2E2E] border-[#C9BDB2]',
+  paid: 'bg-[#8B0000] text-white border-[#8B0000]',
+  processing: 'bg-[#EEE8E2] text-[#2E2E2E] border-[#C9BDB2]',
+  shipped: 'bg-[#EEE8E2] text-[#2E2E2E] border-[#C9BDB2]',
+  delivered: 'bg-[#2E2E2E] text-white border-[#2E2E2E]',
+  cancelled: 'bg-white text-[#6E655E] border-[#C9BDB2]',
+};
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { data: session, isPending } = useSession();
-  const userId = session?.user?.id ?? '';
-  const email = session?.user?.email ?? '';
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const session = authClient?.useSession?.();
+  const user = session?.data?.user ?? null;
   const [orders, setOrders] = useState<Order[]>([]);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [passwordSaving, setPasswordSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', line1: '', city: '', postalCode: '', country: 'India' });
-  const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
 
   useEffect(() => {
-    if (!isPending && !session?.user) {
-      toast.error('Please sign in to access your dashboard.');
-      navigate('/');
+    if (!session?.isPending && !user?.id) {
+      navigate('/', { replace: true });
     }
-  }, [isPending, navigate, session?.user]);
+  }, [navigate, session?.isPending, user?.id]);
 
   useEffect(() => {
-    if (!userId) return;
     const load = async () => {
+      if (!user?.id) return;
       setLoading(true);
       try {
-        const [profileRes, ordersRes] = await Promise.all([
-          fetch(`/api/users/${encodeURIComponent(userId)}`),
-          fetch(`/api/orders?userId=${encodeURIComponent(userId)}`),
+        const [ordersRes, profileRes] = await Promise.all([
+          fetch('/api/orders', { credentials: 'include' }),
+          fetch('/api/me', { credentials: 'include' }),
         ]);
-        const profileJson = await profileRes.json().catch(() => null);
-        const ordersJson = await ordersRes.json().catch(() => null);
-        const nextProfile = profileJson?.data ?? null;
-        const nextOrders = ordersJson?.data ?? [];
-        setProfile(nextProfile);
-        setOrders(Array.isArray(nextOrders) ? nextOrders : []);
-        setForm({
-          name: nextProfile?.name ?? session?.user?.name ?? '',
-          phone: nextProfile?.phone ?? '',
-          line1: nextProfile?.address?.line1 ?? '',
-          city: nextProfile?.address?.city ?? '',
-          postalCode: nextProfile?.address?.postalCode ?? '',
-          country: nextProfile?.address?.country ?? 'India',
-        });
+        const ordersJson = (await ordersRes.json().catch(() => ({}))) as { data?: Order[]; error?: string };
+        const profileJson = (await profileRes.json().catch(() => ({}))) as { data?: UserProfile; error?: string };
+        setOrders(Array.isArray(ordersJson?.data) ? ordersJson.data : []);
+        setProfile(profileJson?.data ?? null);
+        if (!ordersRes.ok || !profileRes.ok) toast.error('Unable to load dashboard data');
       } catch {
-        toast.error('Unable to load dashboard data.');
+        toast.error('Unable to load dashboard data');
       } finally {
         setLoading(false);
       }
     };
-    load();
-  }, [session?.user?.name, userId]);
+    void load();
+  }, [user?.id]);
 
   const stats = useMemo(() => {
-    const total = orders.length;
-    const paid = orders.filter((o) => o.status === 'paid' || o.status === 'processing' || o.status === 'shipped' || o.status === 'delivered').length;
-    const latest = orders[0]?.createdAt ?? '';
-    return { total, paid, latest };
+    const total = orders.reduce((sum, order) => sum + (order?.total ?? 0), 0);
+    const paid = orders.filter((order) => order?.paymentStatus === 'paid').length;
+    return { total, paid, count: orders.length };
   }, [orders]);
 
-  const saveProfile = async () => {
-    if (!userId) return;
-    setSaving(true);
-    try {
-      const payload = {
-        name: form.name,
-        phone: form.phone,
-        address: {
-          fullName: form.name,
-          line1: form.line1,
-          city: form.city,
-          postalCode: form.postalCode,
-          country: form.country,
-          phone: form.phone,
-        },
-      };
-      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('save failed');
-      toast.success('Profile updated.');
-    } catch {
-      toast.error('Profile update failed.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const changePassword = async () => {
-    setPasswordSaving(true);
-    try {
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(passwords),
-      });
-      if (!res.ok) throw new Error('password failed');
-      setPasswords({ currentPassword: '', newPassword: '' });
-      toast.success('Password updated.');
-    } catch {
-      toast.error('Password change failed.');
-    } finally {
-      setPasswordSaving(false);
-    }
-  };
-
-  const logout = async () => {
-    try {
-      await fetch('/api/auth/sign-out', { method: 'POST' });
-      toast.success('Signed out.');
-      navigate('/');
-    } catch {
-      toast.error('Unable to sign out.');
-    }
-  };
+  if (!user?.id) return <div className="min-h-[60vh] bg-[#F9F7F6]" />;
 
   return (
-    <main className="bg-[#F5F1EB] text-[#1C1C1C]">
-      <section className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-col gap-3 border-b border-[#CFC5B8] pb-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">Account</p>
-          <h1 className="font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl">Dashboard</h1>
-          <p className="max-w-2xl text-sm leading-6 text-[#68625C]">Manage your profile, secure your account, and review your order history in one refined space.</p>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1.05fr_1.35fr]">
-          <section className="rounded-sm border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-            <div className="mb-5 flex items-center justify-between gap-3 border-b border-[#CFC5B8] pb-4">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">Profile</p>
-                <h2 className="mt-1 font-['Playfair_Display'] text-2xl font-light">Personal details</h2>
-              </div>
-              <User className="h-5 w-5 text-[#8B0000]" />
+    <main className="bg-[#F9F7F6] px-4 py-8 text-[#2E2E2E] sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-6xl">
+        <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="border border-[#C9BDB2] bg-white p-5 sm:p-7">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">Account</p>
+              <h1 className="mt-2 font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl">Dashboard</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#6E655E]">
+                Manage your profile and review live order history from a single editorial workspace.
+              </p>
             </div>
-
-            <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Name" value={form.name} onChange={(v) => setForm((p) => ({ ...p, name: v }))} icon={<User className="h-4 w-4" />} />
-                <Field label="Email" value={email} readOnly icon={<Mail className="h-4 w-4" />} />
-                <Field label="Phone" value={form.phone} onChange={(v) => setForm((p) => ({ ...p, phone: v }))} icon={<Phone className="h-4 w-4" />} />
-                <Field label="Country" value={form.country} onChange={(v) => setForm((p) => ({ ...p, country: v }))} icon={<MapPin className="h-4 w-4" />} />
-              </div>
-              <Field label="Address line" value={form.line1} onChange={(v) => setForm((p) => ({ ...p, line1: v }))} icon={<MapPin className="h-4 w-4" />} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} icon={<MapPin className="h-4 w-4" />} />
-                <Field label="Postal code" value={form.postalCode} onChange={(v) => setForm((p) => ({ ...p, postalCode: v }))} icon={<MapPin className="h-4 w-4" />} />
-              </div>
-
-              <button onClick={saveProfile} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-sm bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.25em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60">
-                <CheckCircle2 className="h-4 w-4" />
-                {saving ? 'Saving' : 'Save profile'}
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => navigate('/shop')} className="inline-flex items-center gap-2 border border-[#C9BDB2] bg-[#EEE8E2] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-[#2E2E2E] transition hover:bg-white">
+                <ShoppingBag className="h-4 w-4" /> Shop
+              </button>
+              <button onClick={() => navigate('/cart')} className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-[#650000]">
+                <Eye className="h-4 w-4" /> View Cart
               </button>
             </div>
+          </div>
+        </motion.section>
 
-            <div className="mt-6 border-t border-[#CFC5B8] pt-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-[#8B0000]" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.25em]">Password</h3>
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="border border-[#C9BDB2] bg-white p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">Profile</p>
+                <h2 className="mt-2 font-['Playfair_Display'] text-2xl font-light">Session details</h2>
               </div>
-              <div className="space-y-4">
-                <Field label="Current password" type="password" value={passwords.currentPassword} onChange={(v) => setPasswords((p) => ({ ...p, currentPassword: v }))} icon={<Lock className="h-4 w-4" />} />
-                <Field label="New password" type="password" value={passwords.newPassword} onChange={(v) => setPasswords((p) => ({ ...p, newPassword: v }))} icon={<Shield className="h-4 w-4" />} />
-                <button onClick={changePassword} disabled={passwordSaving} className="inline-flex items-center justify-center gap-2 rounded-sm border border-[#1C1C1C] px-4 py-3 text-xs font-semibold uppercase tracking-[0.25em] transition-colors hover:bg-[#1C1C1C] hover:text-white disabled:cursor-not-allowed disabled:opacity-60">
-                  <Lock className="h-4 w-4" />
-                  {passwordSaving ? 'Updating' : 'Change password'}
-                </button>
-              </div>
+              <Shield className="h-5 w-5 text-[#8B0000]" />
             </div>
-
-            <button onClick={logout} className="mt-6 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-[#8B0000] transition-colors hover:text-[#650000]">
-              <AlertCircle className="h-4 w-4" />
-              Sign out
-            </button>
-          </section>
-
-          <section className="rounded-sm border border-[#CFC5B8] bg-[#FAF9F6] p-5">
-            <div className="mb-5 flex items-center justify-between gap-3 border-b border-[#CFC5B8] pb-4">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">Orders</p>
-                <h2 className="mt-1 font-['Playfair_Display'] text-2xl font-light">Order history</h2>
-              </div>
-              <History className="h-5 w-5 text-[#8B0000]" />
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <Field label="Name" value={profile?.name ?? user?.name ?? 'Guest'} icon={<User className="h-4 w-4" />} />
+              <Field label="Email" value={profile?.email ?? user?.email ?? '—'} icon={<CheckCircle2 className="h-4 w-4" />} />
+              <Field label="Role" value={profile?.role ?? user?.role ?? 'customer'} icon={<Shield className="h-4 w-4" />} />
+              <Field label="Phone" value={profile?.phone ?? '—'} icon={<Clock className="h-4 w-4" />} />
             </div>
-
-            <div className="mb-5 grid gap-3 sm:grid-cols-3">
-              <Stat label="Total orders" value={String(stats.total)} />
-              <Stat label="Active" value={String(stats.paid)} />
-              <Stat label="Latest" value={stats.latest ? new Date(stats.latest).toLocaleDateString() : '—'} />
+            <div className="mt-5 flex items-center gap-3 border-t border-[#C9BDB2] pt-4">
+              <button onClick={() => toast.message('Profile editing is available in the account service')} className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-white transition hover:bg-[#650000]">
+                <Edit className="h-4 w-4" /> Edit Profile
+              </button>
+              <button onClick={() => window.location.reload()} className="inline-flex items-center gap-2 border border-[#C9BDB2] bg-[#EEE8E2] px-4 py-2 text-xs font-semibold uppercase tracking-widest text-[#2E2E2E] transition hover:bg-white">
+                <RefreshCw className="h-4 w-4" /> Refresh
+              </button>
             </div>
+          </motion.div>
 
-            <div className="space-y-3">
+          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="border border-[#C9BDB2] bg-[#EEE8E2] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">Orders</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Stat label="Orders" value={stats.count} />
+              <Stat label="Paid" value={stats.paid} />
+              <Stat label="Spend" value={`₹${stats.total.toLocaleString('en-IN')}`} />
+            </div>
+            <div className="mt-5 space-y-3">
               {loading ? (
-                <div className="rounded-sm border border-dashed border-[#CFC5B8] p-6 text-sm text-[#68625C]">Loading orders…</div>
+                <p className="text-sm text-[#6E655E]">Loading order history…</p>
               ) : orders.length ? (
                 orders.map((order) => (
-                  <article key={order.id} className="rounded-sm border border-[#CFC5B8] bg-white p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <article key={order.id} className="border border-[#C9BDB2] bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold">Order #{order.id}</p>
-                          <StatusPill status={order.status} />
-                        </div>
-                        <p className="mt-1 text-sm text-[#68625C]">{new Date(order.createdAt).toLocaleString()}</p>
-                        <p className="mt-2 text-sm text-[#68625C]">{order.items?.length ?? 0} item(s) · {order.shippingAddress?.city ?? '—'}</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">Order {order.id}</p>
+                        <p className="mt-1 text-sm font-semibold text-[#2E2E2E]">{order.items?.length ?? 0} item(s)</p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold">₹{order.total?.toLocaleString?.() ?? order.total}</p>
-                        <p className="text-xs uppercase tracking-[0.25em] text-[#68625C]">Total</p>
-                      </div>
+                      <span className={`inline-flex items-center border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] ${statusTone[order.paymentStatus ?? 'pending'] ?? statusTone.pending}`}>
+                        {order.paymentStatus ?? 'unpaid'}
+                      </span>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
+                    <div className="mt-3 space-y-2">
                       {(order.items ?? []).slice(0, 3).map((item) => (
-                        <span key={item.id} className="inline-flex max-w-full items-center gap-2 rounded-sm border border-[#CFC5B8] px-3 py-1 text-xs text-[#68625C]">
-                          <Truck className="h-3.5 w-3.5 shrink-0" />
-                          <span className="min-w-0 truncate">{item.name}</span>
-                        </span>
+                        <div key={`${order.id}-${item.productId}-${item.name}`} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="min-w-0 truncate text-[#2E2E2E]">{item.name}</span>
+                          <span className="shrink-0 text-[#6E655E]">x{item.quantity}</span>
+                        </div>
                       ))}
+                    </div>
+                    <div className="mt-4 flex items-center justify-between border-t border-[#C9BDB2] pt-3 text-sm">
+                      <span className="text-[#6E655E]">{new Date(order.createdAt ?? Date.now()).toLocaleDateString()}</span>
+                      <span className="font-semibold text-[#2E2E2E]">₹{(order.total ?? 0).toLocaleString('en-IN')}</span>
                     </div>
                   </article>
                 ))
               ) : (
-                <div className="rounded-sm border border-dashed border-[#CFC5B8] p-6 text-sm text-[#68625C]">No orders found for this account.</div>
+                <div className="flex items-start gap-3 border border-[#C9BDB2] bg-white p-4">
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[#8B0000]" />
+                  <p className="text-sm text-[#6E655E]">No orders yet. Your purchase history will appear here once checkout is complete.</p>
+                </div>
               )}
             </div>
-          </section>
-        </div>
-      </section>
+          </motion.div>
+        </section>
+      </div>
     </main>
   );
 }
 
-function Field({ label = '', value = '', onChange, type = 'text', readOnly = false, icon = null }: { label?: string; value?: string; onChange?: (value: string) => void; type?: string; readOnly?: boolean; icon?: React.ReactNode }) {
+function Field({ label = '', value = '—', icon = null }: { label?: string; value?: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <label className="flex min-w-0 flex-col gap-2">
-      <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-[#68625C]">
+    <div className="border border-[#C9BDB2] bg-[#F9F7F6] p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#6E655E]">
         {icon}
-        {label}
-      </span>
-      <input
-        type={type}
-        value={value}
-        readOnly={readOnly}
-        onChange={(e) => onChange?.(e.target.value)}
-        className={cn('w-full rounded-sm border border-[#CFC5B8] bg-white px-3 py-3 text-sm text-[#1C1C1C] outline-none transition-colors placeholder:text-[#68625C]/60 focus:border-[#8B0000]', readOnly && 'bg-[#FAF9F6]')}
-      />
-    </label>
-  );
-}
-
-function Stat({ label = '', value = '' }: { label?: string; value?: string }) {
-  return (
-    <div className="rounded-sm border border-[#CFC5B8] bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#68625C]">{label}</p>
-      <p className="mt-2 font-['Playfair_Display'] text-2xl font-light">{value}</p>
+        <span>{label}</span>
+      </div>
+      <p className="mt-2 break-words text-sm font-semibold text-[#2E2E2E]">{value}</p>
     </div>
   );
 }
 
-function StatusPill({ status = 'pending' }: { status?: Order['status'] }) {
-  const tone = status === 'delivered' ? 'text-emerald-700' : status === 'cancelled' ? 'text-red-700' : 'text-[#8B0000]';
-  const Icon = status === 'delivered' ? CheckCircle2 : status === 'shipped' ? Truck : Clock;
+function Stat({ label = '', value = '' }: { label?: string; value?: React.ReactNode }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em]', tone, 'border-current/20 bg-current/5')}>
-      <Icon className="h-3.5 w-3.5" />
-      {status}
-    </span>
+    <div className="border border-[#C9BDB2] bg-white p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6E655E]">{label}</p>
+      <p className="mt-2 font-['Playfair_Display'] text-2xl font-light text-[#2E2E2E]">{value}</p>
+    </div>
   );
 }
 
