@@ -1,188 +1,137 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { CartItem, Product, AddToCartPayload, UpdateCartItemPayload } from '@/types';
+import type { CartItem, Product } from '@/types';
 
 type CartContextValue = {
   items: CartItem[];
-  products: Product[];
-  isDrawerOpen: boolean;
-  isLoading: boolean;
+  isOpen: boolean;
   subtotal: number;
+  shipping: number;
+  total: number;
   itemCount: number;
-  setDrawerOpen: (open: boolean) => void;
-  refreshProducts: () => Promise<void>;
-  addToCart: (payload: AddToCartPayload) => Promise<void>;
-  addItem: (payload: AddToCartPayload) => Promise<void>;
-  removeFromCart: (itemId: string) => Promise<void>;
-  removeItem: (itemId: string) => Promise<void>;
-  updateCartItem: (itemId: string, payload: UpdateCartItemPayload) => Promise<void>;
-  clearCart: () => Promise<void>;
+  shippingProgress: number;
+  openCart: () => void;
+  closeCart: () => void;
+  toggleCart: () => void;
+  addItem: (product: Product, quantity?: number, size?: string, color?: string) => void;
+  addToCart: (product: Product, quantity?: number, size?: string, color?: string) => void;
+  removeItem: (productId: string, size?: string, color?: string) => void;
+  removeFromCart: (productId: string, size?: string, color?: string) => void;
+  updateQuantity: (productId: string, quantity: number, size?: string, color?: string) => void;
+  clearCart: () => void;
+  setCartOpen: (open: boolean) => void;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
+const STORAGE_KEY = 'nddn-store-cart-v1';
+const DRAWER_KEY = 'nddn-store-cart-open-v1';
+const FREE_SHIPPING_THRESHOLD = 25000;
 
-const safeJson = async <T,>(response: Response): Promise<T | null> => {
-  try {
-    return (await response.json()) as T;
-  } catch {
-    return null;
-  }
-};
+const getKey = (productId: string, size?: string, color?: string) => `${productId}::${size ?? ''}::${color ?? ''}`;
 
 export function CartProvider({ children }: { children?: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isDrawerOpen, setDrawerOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
-  const refreshProducts = useCallback(async () => {
+  useEffect(() => {
     try {
-      const response = await fetch('/api/products', { credentials: 'include' });
-      const data = (await safeJson<{ data?: Product[] }>(response))?.data ?? [];
-      setProducts(Array.isArray(data) ? data : []);
+      const rawItems = window.localStorage.getItem(STORAGE_KEY);
+      const rawOpen = window.localStorage.getItem(DRAWER_KEY);
+      if (rawItems) setItems(JSON.parse(rawItems) as CartItem[]);
+      if (rawOpen) setIsOpen(rawOpen === 'true');
     } catch {
-      setProducts([]);
+      setItems([]);
     }
   }, []);
 
-  const syncCart = useCallback(async (nextItems: CartItem[]) => {
-    setItems(nextItems);
+  useEffect(() => {
     try {
-      await fetch('/api/cart', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: nextItems }),
-      });
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {}
-  }, []);
+  }, [items]);
 
   useEffect(() => {
-    void refreshProducts();
-  }, [refreshProducts]);
+    try {
+      window.localStorage.setItem(DRAWER_KEY, String(isOpen));
+    } catch {}
+  }, [isOpen]);
 
-  useEffect(() => {
-    const loadCart = async () => {
-      try {
-        const response = await fetch('/api/cart', { credentials: 'include' });
-        const data = (await safeJson<{ data?: CartItem[] }>(response))?.data ?? [];
-        setItems(Array.isArray(data) ? data : []);
-      } catch {
-        setItems([]);
+  const subtotal = useMemo(
+    () => items.reduce((sum, item) => sum + (item.product?.price ?? 0) * (item.quantity ?? 0), 0),
+    [items]
+  );
+
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD || subtotal === 0 ? 0 : 1200;
+  const total = subtotal + shipping;
+  const itemCount = items.reduce((sum, item) => sum + (item.quantity ?? 0), 0);
+  const shippingProgress = Math.min(100, (subtotal / FREE_SHIPPING_THRESHOLD) * 100);
+
+  const upsertItem = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
+    if (!product?.id) return;
+    setItems((current) => {
+      const key = getKey(product.id, size, color);
+      const existing = current.find((item) => getKey(item.productId, item.size, item.color) === key);
+      const stockLimit = product.inStock === false ? 0 : Number.MAX_SAFE_INTEGER;
+      if (existing) {
+        const nextQuantity = Math.min(stockLimit, (existing.quantity ?? 0) + Math.max(1, quantity));
+        return current.map((item) => (getKey(item.productId, item.size, item.color) === key ? { ...item, product, quantity: nextQuantity } : item));
       }
-    };
-    void loadCart();
+      if (stockLimit <= 0) return current;
+      return [...current, { productId: product.id, product, quantity: Math.min(stockLimit, Math.max(1, quantity)), size, color }];
+    });
+    setIsOpen(true);
   }, []);
 
-  const addToCart = useCallback(async (payload: AddToCartPayload) => {
-    const quantity = Math.max(1, payload?.quantity ?? 1);
-    setIsLoading(true);
-    try {
-      const response = await fetch('/api/cart', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, quantity }),
-      });
-      const data = (await safeJson<{ data?: CartItem[] }>(response))?.data;
-      if (Array.isArray(data)) {
-        setItems(data);
-        return;
-      }
-      const product = products.find((p) => p.id === payload?.productId);
-      if (!product) return;
-      const existing = items.find(
-        (item) =>
-          item.productId === payload?.productId &&
-          (item.size ?? '') === (payload?.size ?? '') &&
-          (item.color ?? '') === (payload?.color ?? '')
-      );
-      const nextItems = existing
-        ? items.map((item) =>
-            item.id === existing.id ? { ...item, quantity: item.quantity + quantity } : item
-          )
-        : [
-            ...items,
-            {
-              id: crypto.randomUUID(),
-              productId: product.id,
-              product,
-              name: product.name,
-              image: product.images?.[0]?.url ?? '',
-              price: product.price,
-              quantity,
-              size: payload?.size,
-              color: payload?.color,
-            },
-          ];
-      await syncCart(nextItems);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [items, products, syncCart]);
+  const removeItem = useCallback((productId: string, size?: string, color?: string) => {
+    setItems((current) => current.filter((item) => getKey(item.productId, item.size, item.color) !== getKey(productId, size, color)));
+  }, []);
 
-  const removeFromCart = useCallback(async (itemId: string) => {
-    setIsLoading(true);
-    try {
-      const nextItems = items.filter((item) => item.id !== itemId);
-      await fetch(`/api/cart/${encodeURIComponent(itemId)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
-      await syncCart(nextItems);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [items, syncCart]);
+  const updateQuantity = useCallback((productId: string, quantity: number, size?: string, color?: string) => {
+    setItems((current) =>
+      current
+        .map((item) => {
+          if (getKey(item.productId, item.size, item.color) !== getKey(productId, size, color)) return item;
+          const nextQuantity = Math.max(1, Math.floor(quantity));
+          const stockLimit = item.product?.inStock === false ? 0 : Number.MAX_SAFE_INTEGER;
+          return { ...item, quantity: Math.min(stockLimit, nextQuantity) };
+        })
+        .filter((item) => item.quantity > 0)
+    );
+  }, []);
 
-  const updateCartItem = useCallback(async (itemId: string, payload: UpdateCartItemPayload) => {
-    setIsLoading(true);
-    try {
-      const nextItems = items.map((item) => (item.id === itemId ? { ...item, ...payload } : item));
-      await fetch(`/api/cart/${encodeURIComponent(itemId)}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload ?? {}),
-      }).catch(() => {});
-      await syncCart(nextItems);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [items, syncCart]);
+  const clearCart = useCallback(() => setItems([]), []);
+  const openCart = useCallback(() => setIsOpen(true), []);
+  const closeCart = useCallback(() => setIsOpen(false), []);
+  const toggleCart = useCallback(() => setIsOpen((current) => !current), []);
 
-  const clearCart = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await fetch('/api/cart', { method: 'DELETE', credentials: 'include' }).catch(() => {});
-      await syncCart([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [syncCart]);
-
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + (item?.price ?? 0) * (item?.quantity ?? 0), 0), [items]);
-  const itemCount = useMemo(() => items.reduce((sum, item) => sum + (item?.quantity ?? 0), 0), [items]);
-
-  const value = useMemo<CartContextValue>(() => ({
-    items,
-    products,
-    isDrawerOpen,
-    isLoading,
-    subtotal,
-    itemCount,
-    setDrawerOpen,
-    refreshProducts,
-    addToCart,
-    addItem: addToCart,
-    removeFromCart,
-    removeItem: removeFromCart,
-    updateCartItem,
-    clearCart,
-  }), [items, products, isDrawerOpen, isLoading, subtotal, itemCount, refreshProducts, addToCart, removeFromCart, updateCartItem, clearCart]);
+  const value = useMemo<CartContextValue>(
+    () => ({
+      items,
+      isOpen,
+      subtotal,
+      shipping,
+      total,
+      itemCount,
+      shippingProgress,
+      openCart,
+      closeCart,
+      toggleCart,
+      addItem: upsertItem,
+      addToCart: upsertItem,
+      removeItem,
+      removeFromCart: removeItem,
+      updateQuantity,
+      clearCart,
+      setCartOpen: setIsOpen,
+    }),
+    [items, isOpen, subtotal, shipping, total, itemCount, shippingProgress, openCart, closeCart, toggleCart, upsertItem, removeItem, updateQuantity, clearCart]
+  );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within CartProvider');
+  if (!context) throw new Error('useCart must be used within a CartProvider');
   return context;
 }
 

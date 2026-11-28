@@ -1,193 +1,251 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, Search, ShoppingBag, User, X } from 'lucide-react';
+import { Menu, Search, ShoppingBag, User, X, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Dialog } from '@radix-ui/react-dialog';
-import { useSession } from 'better-auth/react';
-import { cn } from '@/lib/utils';
 import { useCart } from '@/context/CartContext';
 import AuthModal from '@/components/AuthModal';
+import { cn } from '@/lib/utils';
+import type { SessionState } from '@/types';
+
+type AuthClientLike = {
+  getSession?: () => Promise<{ data?: SessionState | null } | SessionState | null>;
+  signOut?: () => Promise<void>;
+};
+
+const navItems = [
+  { label: 'New In', to: '/shop?category=featured' },
+  { label: 'Outerwear', to: '/shop?category=Outerwear' },
+  { label: 'Dresses', to: '/shop?category=Dresses' },
+  { label: 'Tailoring', to: '/shop?category=Tailoring' },
+  { label: 'Accessories', to: '/shop?category=Accessories' },
+];
+
+const authClient = (globalThis as typeof globalThis & { authClient?: AuthClientLike }).authClient;
 
 export function Header({ className = '' }: { className?: string }) {
-  const navigate = useNavigate();
   const location = useLocation();
-  const { data: session } = useSession();
-  const { items = [] } = useCart?.() ?? {};
+  const navigate = useNavigate();
+  const { items = [] } = useCart() as { items?: Array<{ quantity?: number }> };
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [search, setSearch] = useState('');
+  const [session, setSession] = useState<SessionState>({ user: null, isAuthenticated: false });
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
 
-  const bagCount = useMemo(
-    () => items.reduce((sum: number, item: any) => sum + (item?.quantity ?? 0), 0),
+  const itemCount = useMemo(
+    () => items.reduce((sum, item) => sum + (item?.quantity ?? 0), 0),
     [items]
   );
 
-  const navItems = [
-    { label: 'New In', to: '/shop?category=new-in' },
-    { label: 'Women', to: '/shop?category=women' },
-    { label: 'Men', to: '/shop?category=men' },
-    { label: 'Accessories', to: '/shop?category=accessories' },
-  ];
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setQuery(params.get('q') ?? '');
+  }, [location.search]);
 
-  const submitSearch = (value: string) => {
-    const q = value.trim();
-    if (!q) return;
-    navigate(`/shop?q=${encodeURIComponent(q)}`);
+  useEffect(() => {
+    let mounted = true;
+    const loadSession = async () => {
+      try {
+        const result = await authClient?.getSession?.();
+        const next = (result as { data?: SessionState | null } | SessionState | null)?.data ?? result ?? null;
+        if (mounted) setSession(next ?? { user: null, isAuthenticated: false });
+      } catch {
+        if (mounted) setSession({ user: null, isAuthenticated: false });
+      }
+    };
+    void loadSession();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSearch = (value: string) => {
+    setQuery(value);
+    const params = new URLSearchParams(location.search);
+    if (value.trim()) params.set('q', value.trim());
+    else params.delete('q');
+    navigate({ pathname: '/shop', search: params.toString() ? `?${params.toString()}` : '' });
+    setSearchOpen(false);
     setMobileOpen(false);
   };
 
+  const handleSignOut = async () => {
+    try {
+      await authClient?.signOut?.();
+      setSession({ user: null, isAuthenticated: false });
+      navigate('/');
+    } catch {
+      setSession({ user: null, isAuthenticated: false });
+    }
+  };
+
   return (
-    <header className={cn('sticky top-0 z-50 border-b border-[#CFC5B8] bg-[#F5F1EB]/90 backdrop-blur-md', className)}>
-      <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <button
-          type="button"
-          onClick={() => setMobileOpen((v) => !v)}
-          className="inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C] transition-colors hover:bg-[#8B0000] hover:text-white lg:hidden"
-          aria-label="Toggle navigation"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+    <header className={cn('sticky top-0 z-50 border-b border-[#C9BEB4] bg-[#F9F7F6]/95 backdrop-blur-sm', className)}>
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="inline-flex h-10 w-10 items-center justify-center border border-[#C9BEB4] text-[#2E2E2E] transition hover:bg-[#F1ECE7] lg:hidden"
+            aria-label="Toggle navigation"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+          <Link to="/" className="min-w-0">
+            <div className="truncate font-['Playfair_Display'] text-xl tracking-tight text-[#2E2E2E] sm:text-2xl">
+              NDDN Store
+            </div>
+            <div className="truncate text-[10px] uppercase tracking-[0.28em] text-[#6F665F]">
+              Luxury fashion storefront
+            </div>
+          </Link>
+        </div>
 
-        <Link to="/" className="min-w-0 flex-1 lg:flex-none">
-          <div className="flex items-baseline gap-2">
-            <span className="font-['Playfair_Display'] text-2xl tracking-tight text-[#1C1C1C]">NDDN</span>
-            <span className="hidden text-[10px] font-semibold uppercase tracking-[0.35em] text-[#68625C] sm:inline">Store</span>
-          </div>
-        </Link>
-
-        <nav className="hidden flex-1 items-center justify-center gap-6 lg:flex">
+        <nav className="hidden items-center gap-5 lg:flex">
           {navItems.map((item) => (
             <Link
-              key={item.to}
+              key={item.label}
               to={item.to}
-              className={cn(
-                'text-[11px] font-semibold uppercase tracking-[0.28em] text-[#1C1C1C] transition-colors hover:text-[#8B0000]',
-                location.pathname + location.search === item.to ? 'text-[#8B0000]' : ''
-              )}
+              className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#2E2E2E] transition hover:text-[#8B0000]"
             >
               {item.label}
             </Link>
           ))}
         </nav>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submitSearch(search);
-          }}
-          className="hidden min-w-0 flex-1 items-center justify-end lg:flex"
-        >
-          <div className="flex w-full max-w-sm items-center border border-[#CFC5B8] bg-[#FAF9F6] px-3">
-            <Search className="h-4 w-4 shrink-0 text-[#68625C]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search collection"
-              className="w-full bg-transparent px-2 py-2 text-sm text-[#1C1C1C] outline-none placeholder:text-[#68625C]"
-            />
-          </div>
-        </form>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => navigate('/shop')}
-            className="inline-flex h-10 items-center justify-center border border-[#CFC5B8] bg-[#FAF9F6] px-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#1C1C1C] transition-colors hover:bg-[#1C1C1C] hover:text-white"
+            onClick={() => setSearchOpen((v) => !v)}
+            className="inline-flex h-10 items-center gap-2 border border-[#C9BEB4] px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2E2E2E] transition hover:bg-[#F1ECE7]"
+            aria-label="Search"
           >
-            Shop
+            <Search className="h-4 w-4" />
+            <span className="hidden sm:inline">Search</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/cart')}
-            className="relative inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C] transition-colors hover:bg-[#8B0000] hover:text-white"
-            aria-label="Open cart"
+            className="relative inline-flex h-10 items-center gap-2 border border-[#C9BEB4] px-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2E2E2E] transition hover:bg-[#F1ECE7]"
+            aria-label="Shopping bag"
           >
-            <ShoppingBag className="h-5 w-5" />
-            {bagCount > 0 ? (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center border border-[#8B0000] bg-[#8B0000] px-1 text-[10px] font-semibold text-white">
-                {bagCount}
+            <ShoppingBag className="h-4 w-4" />
+            <span className="hidden sm:inline">Bag</span>
+            {itemCount > 0 ? (
+              <span className="ml-1 inline-flex min-w-5 items-center justify-center bg-[#8B0000] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                {itemCount}
               </span>
             ) : null}
           </button>
 
-          {session?.user ? (
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="hidden h-10 items-center gap-2 border border-[#CFC5B8] bg-[#FAF9F6] px-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#1C1C1C] transition-colors hover:bg-[#1C1C1C] hover:text-white sm:inline-flex"
-            >
-              <User className="h-4 w-4" />
-              <span className="max-w-[120px] truncate">{session?.user?.name ?? session?.user?.email ?? 'Account'}</span>
-            </button>
+          {session?.isAuthenticated ? (
+            <div className="hidden items-center gap-2 sm:flex">
+              <div className="flex max-w-[160px] items-center gap-2 border border-[#C9BEB4] px-3 py-2">
+                <User className="h-4 w-4 shrink-0 text-[#6F665F]" />
+                <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2E2E2E]">
+                  {session?.user?.name ?? session?.user?.email ?? 'Account'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                className="border border-[#8B0000] bg-[#8B0000] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:bg-[#650000]"
+              >
+                Sign Out
+              </button>
+            </div>
           ) : (
             <button
               type="button"
               onClick={() => setAuthOpen(true)}
-              className="hidden h-10 items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000] sm:inline-flex"
+              className="hidden border border-[#8B0000] bg-[#8B0000] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white transition hover:bg-[#650000] sm:inline-flex"
             >
-              <User className="h-4 w-4" />
               Sign In
             </button>
           )}
         </div>
       </div>
 
-      {mobileOpen ? (
-        <div className="border-t border-[#CFC5B8] bg-[#FAF9F6] lg:hidden">
-          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                submitSearch(search);
-              }}
-              className="flex items-center border border-[#CFC5B8] bg-white px-3"
-            >
-              <Search className="h-4 w-4 shrink-0 text-[#68625C]" />
+      <AnimatePresence>
+        {searchOpen ? (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="border-t border-[#C9BEB4] bg-[#F1ECE7]"
+          >
+            <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+              <Search className="h-4 w-4 shrink-0 text-[#6F665F]" />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search collection"
-                className="w-full bg-transparent px-2 py-2 text-sm text-[#1C1C1C] outline-none placeholder:text-[#68625C]"
+                value={query}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search collections, silhouettes, or pieces"
+                className="w-full bg-transparent text-sm text-[#2E2E2E] outline-none placeholder:text-[#6F665F]"
               />
-            </form>
-            <nav className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center border border-[#C9BEB4] text-[#2E2E2E] transition hover:bg-[#F9F7F6]"
+                aria-label="Close search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {mobileOpen ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="border-t border-[#C9BEB4] bg-[#F9F7F6] lg:hidden"
+          >
+            <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-4 py-4 sm:px-6">
               {navItems.map((item) => (
                 <Link
-                  key={item.to}
+                  key={item.label}
                   to={item.to}
                   onClick={() => setMobileOpen(false)}
-                  className="min-w-0 border border-[#CFC5B8] bg-white px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#1C1C1C] truncate transition-colors hover:bg-[#1C1C1C] hover:text-white"
+                  className="flex items-center justify-between border border-[#C9BEB4] px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#2E2E2E]"
                 >
-                  {item.label}
+                  <span className="min-w-0 truncate">{item.label}</span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-[#6F665F]" />
                 </Link>
               ))}
-            </nav>
-            {!session?.user ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileOpen(false);
-                  setAuthOpen(true);
-                }}
-                className="inline-flex h-11 items-center justify-center border border-[#8B0000] bg-[#8B0000] px-4 text-[11px] font-semibold uppercase tracking-[0.28em] text-white"
-              >
-                Sign In
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileOpen(false);
-                  navigate('/dashboard');
-                }}
-                className="inline-flex h-11 items-center justify-center border border-[#CFC5B8] bg-white px-4 text-[11px] font-semibold uppercase tracking-[0.28em] text-[#1C1C1C]"
-              >
-                {session?.user?.name ?? session?.user?.email ?? 'Account'}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : null}
+              {session?.isAuthenticated ? (
+                <div className="flex flex-col gap-2.5 pt-2">
+                  <div className="flex items-center gap-2 border border-[#C9BEB4] px-3 py-3">
+                    <User className="h-4 w-4 shrink-0 text-[#6F665F]" />
+                    <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2E2E2E]">
+                      {session?.user?.name ?? session?.user?.email ?? 'Account'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleSignOut()}
+                    className="border border-[#8B0000] bg-[#8B0000] px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAuthOpen(true)}
+                  className="border border-[#8B0000] bg-[#8B0000] px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <AuthModal open={authOpen} onOpenChange={setAuthOpen} />
     </header>

@@ -1,282 +1,224 @@
-import React, { useEffect, useMemo, useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Lock, Eye, EyeOff, CheckCircle2, HelpCircle, ArrowRight, Circle as Icon } from 'lucide-react';
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import React, { useEffect, useMemo, useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, Mail, Lock, User, CheckCircle2, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-export interface AuthModalProps {
+type AuthMode = 'signin' | 'signup';
+
+type AuthClient = {
+  signIn?: (payload: { email: string; password: string }) => Promise<unknown>;
+  signUp?: (payload: { email: string; password: string; name?: string }) => Promise<unknown>;
+  refreshSession?: () => Promise<unknown>;
+};
+
+declare const authClient: AuthClient | undefined;
+
+export type AuthModalProps = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  defaultMode?: "signin" | "signup";
-  onSuccess?: () => void;
-}
+  defaultMode?: AuthMode;
+  className?: string;
+};
 
-export function AuthModal({
-  open = false,
-  onOpenChange = () => {},
-  defaultMode = "signin",
-  onSuccess = () => {},
-}: AuthModalProps) {
-  const [mode, setMode] = useState<"signin" | "signup">(defaultMode);
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [forgot, setForgot] = useState(false);
+export function AuthModal({ open = false, onOpenChange = () => {}, defaultMode = 'signin', className = '' }: AuthModalProps) {
+  const [mode, setMode] = useState<AuthMode>(defaultMode);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
 
+  useEffect(() => setMode(defaultMode), [defaultMode, open]);
   useEffect(() => {
-    if (open) setMode(defaultMode);
-  }, [open, defaultMode]);
+    if (!open) return;
+    setBusy(false);
+  }, [open]);
 
-  const strength = useMemo(() => {
+  const passwordPolicy = useMemo(() => {
     const checks = [
-      password.length >= 8,
-      /[A-Z]/.test(password),
-      /[a-z]/.test(password),
-      /\d/.test(password),
-      /[^A-Za-z0-9]/.test(password),
+      { ok: password.length >= 8, label: '8+ characters' },
+      { ok: /[A-Z]/.test(password), label: 'One uppercase letter' },
+      { ok: /[a-z]/.test(password), label: 'One lowercase letter' },
+      { ok: /\d/.test(password), label: 'One number' },
     ];
-    return { score: checks.filter(Boolean).length, items: checks };
+    return checks;
   }, [password]);
 
-  const validate = () => {
-    if (!email.trim() || !password.trim()) return "Email and password are required.";
-    if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
-    if (mode === "signup" && name.trim().length < 2) return "Please enter your full name.";
-    if (mode === "signup" && strength.score < 4) return "Use a stronger password.";
-    return "";
-  };
+  const canSubmit = useMemo(() => {
+    const emailOk = /^\S+@\S+\.\S+$/.test(email.trim());
+    const passOk = passwordPolicy.every((c) => c.ok);
+    const nameOk = mode === 'signin' || name.trim().length >= 2;
+    return emailOk && passOk && nameOk && !busy;
+  }, [email, name, mode, passwordPolicy, busy]);
 
-  const submit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const error = validate();
-    if (error) return toast.error(error);
-    setLoading(true);
+    if (!canSubmit) {
+      toast.error('Please complete the required fields.');
+      return;
+    }
+    setBusy(true);
     try {
-      const endpoint = mode === "signin" ? "/api/auth/sign-in" : "/api/auth/sign-up";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name: name.trim() || undefined }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message ?? "Authentication failed.");
-      toast.success(mode === "signin" ? "Welcome back." : "Account created.");
-      onSuccess();
+      const client = authClient ?? {};
+      if (mode === 'signin') {
+        if (!client.signIn) throw new Error('Authentication service is unavailable.');
+        await client.signIn({ email: email.trim(), password });
+        await client.refreshSession?.();
+        toast.success('Welcome back.');
+      } else {
+        if (!client.signUp) throw new Error('Authentication service is unavailable.');
+        await client.signUp({ email: email.trim(), password, name: name.trim() });
+        await client.refreshSession?.();
+        toast.success('Account created.');
+      }
       onOpenChange(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Authentication failed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Authentication failed.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
-
-  const requestReset = async () => {
-    if (!email.trim()) return toast.error("Enter your email first.");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) throw new Error("Unable to send reset link.");
-      toast.success("Password reset link sent.");
-      setForgot(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to send reset link.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const strengthLabel = ["Very weak", "Weak", "Fair", "Good", "Strong"][Math.max(0, strength.score - 1)] ?? "Very weak";
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]" />
+        <Dialog.Content
+          className={cn(
+            'fixed right-0 top-0 z-50 h-full w-full max-w-md border-l border-[#C9BEB4] bg-[#F9F7F6] shadow-2xl outline-none',
+            className
+          )}
+        >
           <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 18, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-            className="overflow-hidden border border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
+            initial={{ x: 24, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 24, opacity: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="flex h-full flex-col"
           >
-            <div className="flex items-start justify-between border-b border-[#CFC5B8] px-5 py-4">
+            <div className="flex items-start justify-between border-b border-[#C9BEB4] px-6 py-5">
               <div className="min-w-0">
-                <Dialog.Title className="font-['Playfair_Display'] text-2xl font-medium tracking-tight">
-                  {forgot ? "Reset Password" : mode === "signin" ? "Welcome Back" : "Create Account"}
+                <Dialog.Title className="font-['Playfair_Display'] text-2xl font-medium tracking-tight text-[#2E2E2E]">
+                  {mode === 'signin' ? 'Sign in' : 'Create account'}
                 </Dialog.Title>
-                <Dialog.Description className="mt-1 text-sm text-[#68625C]">
-                  {forgot ? "We’ll send a secure reset link to your inbox." : "Access your orders, wishlist, and checkout faster."}
+                <Dialog.Description className="mt-1 text-sm text-[#6F665F]">
+                  {mode === 'signin' ? 'Access your saved orders and checkout faster.' : 'Join NDDN Store for a refined checkout experience.'}
                 </Dialog.Description>
               </div>
               <Dialog.Close asChild>
                 <button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center border border-[#CFC5B8] text-[#1C1C1C] transition-colors hover:bg-[#8B0000] hover:text-white"
+                  className="inline-flex h-10 w-10 items-center justify-center border border-[#C9BEB4] text-[#2E2E2E] transition-colors hover:bg-[#F1ECE7]"
+                  aria-label="Close authentication dialog"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </Dialog.Close>
             </div>
 
-            <div className="px-5 pt-4">
-              <div className="flex gap-2 border-b border-[#CFC5B8]">
-                {(["signin", "signup"] as const).map((item) => (
+            <div className="border-b border-[#C9BEB4] px-6 py-4">
+              <div className="grid grid-cols-2 gap-2">
+                {(['signin', 'signup'] as AuthMode[]).map((item) => (
                   <button
                     key={item}
                     type="button"
-                    onClick={() => {
-                      setMode(item);
-                      setForgot(false);
-                    }}
+                    onClick={() => setMode(item)}
                     className={cn(
-                      "border-b-2 px-1 py-3 text-xs font-semibold uppercase tracking-[0.22em] transition-colors",
-                      mode === item && !forgot
-                        ? "border-[#8B0000] text-[#1C1C1C]"
-                        : "border-transparent text-[#68625C] hover:text-[#1C1C1C]"
+                      'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition-colors',
+                      mode === item
+                        ? 'border-[#8B0000] bg-[#8B0000] text-white'
+                        : 'border-[#C9BEB4] bg-transparent text-[#2E2E2E] hover:bg-[#F1ECE7]'
                     )}
                   >
-                    {item === "signin" ? "Sign In" : "Sign Up"}
+                    {item === 'signin' ? 'Sign In' : 'Sign Up'}
                   </button>
                 ))}
               </div>
             </div>
 
-            <form onSubmit={submit} className="space-y-4 px-5 py-5">
-              <AnimatePresence mode="wait">
-                {forgot ? (
-                  <motion.div key="forgot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <Field icon={Mail} label="Email Address" value={email} onChange={setEmail} type="email" autoComplete="email" />
-                    <button
-                      type="button"
-                      onClick={requestReset}
-                      disabled={loading}
-                      className="inline-flex w-full items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {loading ? "Sending..." : "Send Reset Link"}
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForgot(false)}
-                      className="text-xs font-semibold uppercase tracking-[0.22em] text-[#68625C] transition-colors hover:text-[#1C1C1C]"
-                    >
-                      Back to sign in
-                    </button>
-                  </motion.div>
-                ) : (
-                  <motion.div key={mode} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    {mode === "signup" && (
-                      <Field label="Full Name" value={name} onChange={setName} type="text" autoComplete="name" />
-                    )}
-                    <Field icon={Mail} label="Email Address" value={email} onChange={setEmail} type="email" autoComplete="email" />
-                    <div className="space-y-2">
-                      <Field
-                        icon={Lock}
-                        label="Password"
-                        value={password}
-                        onChange={setPassword}
-                        type={showPassword ? "text" : "password"}
-                        autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                        trailing={
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword((v) => !v)}
-                            className="text-[#68625C] transition-colors hover:text-[#1C1C1C]"
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        }
-                      />
-                      {mode === "signup" && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-[#68625C]">
-                            <span>Password strength</span>
-                            <span>{strengthLabel}</span>
-                          </div>
-                          <div className="grid grid-cols-5 gap-1">
-                            {strength.items.map((ok, i) => (
-                              <span key={i} className={cn("h-1.5 border border-[#CFC5B8]", ok ? "bg-[#8B0000]" : "bg-transparent")} />
-                            ))}
-                          </div>
-                          <div className="flex flex-wrap gap-2 text-xs text-[#68625C]">
-                            {["8+ chars", "Uppercase", "Lowercase", "Number", "Symbol"].map((label, i) => (
-                              <span key={label} className={cn("inline-flex items-center gap-1", strength.items[i] ? "text-[#1C1C1C]" : "")}>
-                                {strength.items[i] ? <CheckCircle2 className="h-3.5 w-3.5 text-[#8B0000]" /> : <HelpCircle className="h-3.5 w-3.5" />}
-                                {label}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setForgot(true)}
-                        className="text-xs font-semibold uppercase tracking-[0.22em] text-[#68625C] transition-colors hover:text-[#1C1C1C]"
-                      >
-                        Forgot password?
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="inline-flex items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {loading ? "Please wait..." : mode === "signin" ? "Sign In" : "Create Account"}
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </motion.div>
+            <form onSubmit={handleSubmit} className="flex flex-1 flex-col px-6 py-5">
+              <div className="flex-1 space-y-4">
+                {mode === 'signup' && (
+                  <label className="block">
+                    <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">
+                      <User className="h-3.5 w-3.5" />
+                      Name
+                    </span>
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      autoComplete="name"
+                      className="w-full border border-[#C9BEB4] bg-white px-3 py-3 text-sm text-[#2E2E2E] outline-none transition-colors placeholder:text-[#6F665F]/60 focus:border-[#8B0000]"
+                      placeholder="Your name"
+                    />
+                  </label>
                 )}
-              </AnimatePresence>
+
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">
+                    <Mail className="h-3.5 w-3.5" />
+                    Email
+                  </span>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    inputMode="email"
+                    className="w-full border border-[#C9BEB4] bg-white px-3 py-3 text-sm text-[#2E2E2E] outline-none transition-colors placeholder:text-[#6F665F]/60 focus:border-[#8B0000]"
+                    placeholder="name@example.com"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">
+                    <Lock className="h-3.5 w-3.5" />
+                    Password
+                  </span>
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                    className="w-full border border-[#C9BEB4] bg-white px-3 py-3 text-sm text-[#2E2E2E] outline-none transition-colors placeholder:text-[#6F665F]/60 focus:border-[#8B0000]"
+                    placeholder="••••••••"
+                  />
+                </label>
+
+                <div className="space-y-2 border border-[#C9BEB4] bg-[#F1ECE7] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F]">Password policy</div>
+                  <div className="space-y-2">
+                    {passwordPolicy.map((rule) => (
+                      <div key={rule.label} className="flex items-center gap-2 text-sm text-[#2E2E2E]">
+                        {rule.ok ? <CheckCircle2 className="h-4 w-4 text-[#8B0000]" /> : <AlertCircle className="h-4 w-4 text-[#6F665F]" />}
+                        <span>{rule.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="inline-flex w-full items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {busy ? 'Please wait' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode((prev) => (prev === 'signin' ? 'signup' : 'signin'))}
+                  className="w-full text-xs font-semibold uppercase tracking-[0.2em] text-[#6F665F] transition-colors hover:text-[#2E2E2E]"
+                >
+                  {mode === 'signin' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
+                </button>
+              </div>
             </form>
           </motion.div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-function Field({
-  label = "",
-  value = "",
-  onChange = () => {},
-  type = "text",
-  autoComplete = "",
-  icon: Icon,
-  trailing,
-}: {
-  label?: string;
-  value?: string;
-  onChange?: (value: string) => void;
-  type?: string;
-  autoComplete?: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-xs font-semibold uppercase tracking-[0.22em] text-[#68625C]">{label}</span>
-      <div className="flex items-center gap-3 border border-[#CFC5B8] bg-white px-3 py-3">
-        {Icon ? <Icon className="h-4 w-4 shrink-0 text-[#68625C]" /> : null}
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          type={type}
-          autoComplete={autoComplete}
-          className="min-w-0 flex-1 bg-transparent text-sm text-[#1C1C1C] outline-none placeholder:text-[#9A948D]"
-        />
-        {trailing}
-      </div>
-    </label>
   );
 }
 
