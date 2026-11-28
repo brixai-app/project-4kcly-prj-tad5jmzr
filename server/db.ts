@@ -1,326 +1,156 @@
-import { createClient } from '@libsql/client';
+import { createClient } from "@libsql/client";
 
-export const db = createClient({ url: 'file:local.db' });
+export const db = createClient({ url: "file:local.db" });
 export default db;
 
-const productSeed = [
+const products = [
   {
-    id: 'prod_001',
-    name: 'Atelier Wool Overcoat',
-    slug: 'atelier-wool-overcoat',
-    description: 'Double-faced wool overcoat with a clean shoulder, deep lapel, and fluid drape.',
-    price: 28900,
-    compareAtPrice: 34900,
-    category: 'outerwear',
-    collection: 'Winter Issue',
-    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85',
-    images: ['https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85'],
-    color: 'Charcoal',
-    size: ['S', 'M', 'L'],
-    material: 'Wool blend',
-    inStock: true,
-    featured: true,
-    rating: 4.9,
-    reviewCount: 18,
-  },
-  {
-    id: 'prod_002',
-    name: 'Silk Collar Shirt',
-    slug: 'silk-collar-shirt',
-    description: 'Fluid silk shirt with a sharp collar and a luminous finish for evening layering.',
-    price: 12400,
-    compareAtPrice: 14900,
-    category: 'shirts',
-    collection: 'Evening Line',
-    image: 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85',
-    images: ['https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85'],
-    color: 'Ivory',
-    size: ['XS', 'S', 'M'],
-    material: 'Silk',
+    id: "prod_1",
+    slug: "atelier-tailored-coat",
+    name: "Atelier Tailored Coat",
+    description: "A sharply cut wool coat with a fluid drape and a clean, architectural shoulder.",
+    category: "Outerwear",
+    collection: "Winter Atelier",
+    price: 18900,
+    compareAtPrice: 22900,
+    currency: "INR",
+    images: [{ url: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85", alt: "Tailored coat editorial look", order: 1 }],
+    sizes: ["S", "M", "L"],
+    colors: ["Charcoal", "Ivory"],
     inStock: true,
     featured: true,
     rating: 4.8,
     reviewCount: 24,
   },
   {
-    id: 'prod_003',
-    name: 'Tailored Pleat Trouser',
-    slug: 'tailored-pleat-trouser',
-    description: 'High-rise trouser with a pressed front crease and a precise, elongated silhouette.',
-    price: 15900,
-    compareAtPrice: 18900,
-    category: 'trousers',
-    collection: 'Core Tailoring',
-    image: 'https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1485955900006-10f4d324d411?auto=format&fit=crop&w=800&q=80'],
-    color: 'Stone',
-    size: ['S', 'M', 'L', 'XL'],
-    material: 'Virgin wool',
+    id: "prod_2",
+    slug: "silk-column-dress",
+    name: "Silk Column Dress",
+    description: "A minimal column silhouette in luminous silk with a restrained evening finish.",
+    category: "Dresses",
+    collection: "Evening Line",
+    price: 22400,
+    compareAtPrice: 25900,
+    currency: "INR",
+    images: [{ url: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85", alt: "Silk dress editorial look", order: 1 }],
+    sizes: ["XS", "S", "M"],
+    colors: ["Black", "Bone"],
+    inStock: true,
+    featured: true,
+    rating: 4.9,
+    reviewCount: 18,
+  },
+  {
+    id: "prod_3",
+    slug: "structured-leather-bag",
+    name: "Structured Leather Bag",
+    description: "A compact leather carryall with a polished edge and precise hardware detailing.",
+    category: "Accessories",
+    collection: "Signature Objects",
+    price: 14900,
+    compareAtPrice: 16900,
+    currency: "INR",
+    images: [{ url: "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85", alt: "Leather bag editorial still life", order: 1 }],
+    colors: ["Espresso", "Black"],
     inStock: true,
     featured: false,
     rating: 4.7,
+    reviewCount: 31,
+  },
+  {
+    id: "prod_4",
+    slug: "tailored-trouser",
+    name: "Tailored Trouser",
+    description: "A high-rise trouser with a long line, pressed crease, and refined movement.",
+    category: "Trousers",
+    collection: "Core Tailoring",
+    price: 11900,
+    compareAtPrice: 13900,
+    currency: "INR",
+    images: [{ url: "https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80", alt: "Tailored trouser fashion image", order: 1 }],
+    sizes: ["S", "M", "L", "XL"],
+    colors: ["Stone", "Black"],
+    inStock: true,
+    featured: false,
+    rating: 4.6,
     reviewCount: 12,
   },
   {
-    id: 'prod_004',
-    name: 'Cashmere Knit Polo',
-    slug: 'cashmere-knit-polo',
-    description: 'Soft cashmere knit polo with a compact collar and a refined, close fit.',
-    price: 17900,
-    compareAtPrice: 21900,
-    category: 'knitwear',
-    collection: 'Soft Structure',
-    image: 'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85',
-    images: ['https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85'],
-    color: 'Oat',
-    size: ['S', 'M', 'L'],
-    material: 'Cashmere',
-    inStock: true,
-    featured: false,
-    rating: 4.9,
-    reviewCount: 9,
-  },
-  {
-    id: 'prod_005',
-    name: 'Leather Buckle Belt',
-    slug: 'leather-buckle-belt',
-    description: 'Minimal leather belt finished with a brushed buckle and subtle edge paint.',
+    id: "prod_5",
+    slug: "ribbed-knit-top",
+    name: "Ribbed Knit Top",
+    description: "A close-fitting knit top with a soft hand feel and a clean, versatile neckline.",
+    category: "Knitwear",
+    collection: "Daily Edit",
     price: 6900,
-    compareAtPrice: 8500,
-    category: 'accessories',
-    collection: 'Signature Objects',
-    image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80',
-    images: ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80'],
-    color: 'Black',
-    size: ['S', 'M', 'L'],
-    material: 'Leather',
+    compareAtPrice: 7900,
+    currency: "INR",
+    images: [{ url: "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=800&q=80", alt: "Ribbed knit top editorial image", order: 1 }],
+    sizes: ["XS", "S", "M", "L"],
+    colors: ["Cream", "Mocha"],
     inStock: true,
     featured: true,
-    rating: 4.6,
-    reviewCount: 15,
+    rating: 4.5,
+    reviewCount: 9,
   },
 ];
 
-const authTables = ['user', 'session', 'account', 'verification'];
-const appTables = ['products', 'orders', 'order_items', 'addresses', 'reviews'];
-
-const schema = [
-  `CREATE TABLE IF NOT EXISTS products (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    description TEXT,
-    price INTEGER NOT NULL,
-    compareAtPrice INTEGER,
-    category TEXT NOT NULL,
-    collection TEXT,
-    image TEXT NOT NULL,
-    images TEXT,
-    color TEXT,
-    size TEXT,
-    material TEXT,
-    inStock INTEGER DEFAULT 1,
-    featured INTEGER DEFAULT 0,
-    rating REAL DEFAULT 0,
-    reviewCount INTEGER DEFAULT 0,
-    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+const tables = [
+  `create table if not exists products (
+    id text primary key, slug text unique, name text not null, description text, category text not null, collection text,
+    price integer not null, compareAtPrice integer, currency text default 'INR', images text not null, sizes text, colors text,
+    inStock integer default 1, featured integer default 0, rating real, reviewCount integer default 0, createdAt text default current_timestamp, updatedAt text default current_timestamp
   )`,
-  `CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY,
-    userId TEXT,
-    subtotal INTEGER NOT NULL,
-    shipping INTEGER NOT NULL,
-    tax INTEGER NOT NULL,
-    total INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    shippingAddress TEXT,
-    createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
-    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
+  `create table if not exists reviews (
+    id text primary key, productId text not null, userId text, userName text not null, rating integer not null, title text, body text not null, createdAt text not null
   )`,
-  `CREATE TABLE IF NOT EXISTS order_items (
-    id TEXT PRIMARY KEY,
-    orderId TEXT,
-    productId TEXT NOT NULL,
-    name TEXT NOT NULL,
-    image TEXT NOT NULL,
-    price INTEGER NOT NULL,
-    quantity INTEGER NOT NULL,
-    size TEXT,
-    color TEXT
+  `create table if not exists cart_items (
+    id text primary key, userId text, productId text not null, name text not null, image text, price integer not null, quantity integer not null, size text, color text
   )`,
-  `CREATE TABLE IF NOT EXISTS addresses (
-    id TEXT PRIMARY KEY,
-    userId TEXT,
-    fullName TEXT NOT NULL,
-    line1 TEXT NOT NULL,
-    line2 TEXT,
-    city TEXT NOT NULL,
-    state TEXT NOT NULL,
-    postalCode TEXT NOT NULL,
-    country TEXT NOT NULL,
-    phone TEXT,
-    isDefault INTEGER DEFAULT 0
+  `create table if not exists orders (
+    id text primary key, userId text not null, items text not null, subtotal integer not null, shipping integer not null, tax integer default 0, total integer not null,
+    currency text default 'INR', status text not null, shippingAddress text not null, createdAt text not null, updatedAt text
   )`,
-  `CREATE TABLE IF NOT EXISTS reviews (
-    id TEXT PRIMARY KEY,
-    productId TEXT NOT NULL,
-    userId TEXT,
-    userName TEXT,
-    rating INTEGER NOT NULL,
-    title TEXT,
-    body TEXT NOT NULL,
-    createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+  `create table if not exists user (
+    id text primary key, email text unique not null, name text, avatarUrl text, role text default 'customer', phone text, address text, createdAt text default current_timestamp, updatedAt text default current_timestamp
   )`,
-  `CREATE TABLE IF NOT EXISTS user (id TEXT PRIMARY KEY)`,
-  `CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY)`,
-  `CREATE TABLE IF NOT EXISTS account (id TEXT PRIMARY KEY)`,
-  `CREATE TABLE IF NOT EXISTS verification (id TEXT PRIMARY KEY)`,
+  `create table if not exists session (id text primary key, userId text not null, expiresAt text not null, token text unique not null, createdAt text default current_timestamp, updatedAt text default current_timestamp)`,
+  `create table if not exists account (id text primary key, userId text not null, providerId text not null, accountId text not null, accessToken text, refreshToken text, idToken text, createdAt text default current_timestamp, updatedAt text default current_timestamp)`,
+  `create table if not exists verification (id text primary key, identifier text not null, value text not null, expiresAt text not null, createdAt text default current_timestamp, updatedAt text default current_timestamp)`,
 ];
 
 export async function initializeDatabase() {
-  for (const statement of schema) await db.execute(statement);
-  const existing = await db.execute(`SELECT slug FROM products`);
-  const rows = (existing?.rows ?? []) as Array<{ slug?: string }>;
-  const existingSlugs = new Set(rows.map((row) => row?.slug).filter(Boolean) as string[]);
-  for (const product of productSeed) {
-    if (existingSlugs.has(product.slug)) continue;
-    await db.execute({
-      sql: `INSERT INTO products (id, name, slug, description, price, compareAtPrice, category, collection, image, images, color, size, material, inStock, featured, rating, reviewCount)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        product.id,
-        product.name,
-        product.slug,
-        product.description ?? null,
-        product.price,
-        product.compareAtPrice ?? null,
-        product.category,
-        product.collection ?? null,
-        product.image,
-        JSON.stringify(product.images ?? [product.image]),
-        product.color ?? null,
-        JSON.stringify(product.size ?? []),
-        product.material ?? null,
-        product.inStock ? 1 : 0,
-        product.featured ? 1 : 0,
-        product.rating ?? 0,
-        product.reviewCount ?? 0,
-      ],
-    });
+  for (const sql of tables) await db.execute(sql);
+  const existing = await db.execute(`select count(*) as count from products`);
+  if ((existing.rows?.[0]?.count ?? 0) === 0) {
+    for (const p of products) {
+      await db.execute({
+        sql: `insert into products (id, slug, name, description, category, collection, price, compareAtPrice, currency, images, sizes, colors, inStock, featured, rating, reviewCount) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [p.id, p.slug, p.name, p.description ?? null, p.category, p.collection ?? null, p.price, p.compareAtPrice ?? null, p.currency ?? "INR", JSON.stringify(p.images ?? []), JSON.stringify(p.sizes ?? []), JSON.stringify(p.colors ?? []), p.inStock ? 1 : 0, p.featured ? 1 : 0, p.rating ?? null, p.reviewCount ?? 0],
+      });
+    }
   }
-  return true;
+  return { success: true };
 }
 
 export async function inspectTables() {
-  const tables = [...appTables, ...authTables];
-  const result = [];
-  for (const name of tables) {
-    const countRes = await db.execute(`SELECT COUNT(*) AS count FROM ${name}`);
-    const count = Number((countRes?.rows?.[0] as { count?: number } | undefined)?.count ?? 0);
-    result.push({ name, count, isAuth: authTables.includes(name) });
+  const names = ["products", "reviews", "cart_items", "orders", "user", "session", "account", "verification"];
+  const result: Record<string, { exists: boolean; count: number }> = {};
+  for (const name of names) {
+    const rows = await db.execute(`select count(*) as count from sqlite_master where type='table' and name='${name}'`);
+    const countRows = await db.execute(`select count(*) as count from ${name}`);
+    result[name] = { exists: (rows.rows?.[0]?.count ?? 0) > 0, count: countRows.rows?.[0]?.count ?? 0 };
   }
   return result;
 }
 
 export async function getTableData(tableName: string) {
-  const allowed = new Set([...appTables, ...authTables]);
-  if (!allowed.has(tableName)) throw new Error('Table not allowed');
-  const info = await db.execute(`PRAGMA table_info(${tableName})`);
-  const columns = (info?.rows ?? []).map((row: any) => String(row?.name ?? ''));
-  const data = await db.execute(`SELECT * FROM ${tableName} ORDER BY rowid DESC LIMIT 100`);
-  return { columns, rows: data?.rows ?? [] };
+  const allowlist = new Set(["products", "reviews", "cart_items", "orders", "user", "session", "account", "verification"]);
+  if (!allowlist.has(tableName)) return { columns: [], rows: [] };
+  const info = await db.execute(`pragma table_info(${tableName})`);
+  const rows = await db.execute(`select * from ${tableName}`);
+  return {
+    columns: info.rows?.map((r: any) => r?.name ?? "") ?? [],
+    rows: rows.rows ?? [],
+  };
 }
-
-// ── BRIX AI Resilient Database Compatibility Polyfill (query, all, get, run, prepare) ──
-function wrapDbClient(client) {
-  if (!client || typeof client.execute !== 'function' || client.__brix_wrapped) return client;
-  try {
-    Object.defineProperty(client, '__brix_wrapped', { value: true, enumerable: false, configurable: true, writable: true });
-  } catch { client.__brix_wrapped = true; }
-  const origExec = client.execute.bind(client);
-
-  const executeNormalized = async (sqlOrObj, args) => {
-    let stmt;
-    if (typeof sqlOrObj === 'string') {
-      stmt = { sql: sqlOrObj, args: Array.isArray(args) ? args : args !== undefined ? [args] : [] };
-    } else if (sqlOrObj && typeof sqlOrObj === 'object') {
-      stmt = {
-        sql: sqlOrObj.sql || sqlOrObj.text || '',
-        args: Array.isArray(sqlOrObj.args) ? sqlOrObj.args : Array.isArray(sqlOrObj.values) ? sqlOrObj.values : [],
-      };
-    } else {
-      stmt = { sql: String(sqlOrObj || ''), args: [] };
-    }
-    return await origExec(stmt);
-  };
-
-  const queryFn = async (sqlOrObj, args) => {
-    const res = await executeNormalized(sqlOrObj, args);
-    const rows = res && res.rows ? [...res.rows] : [];
-    try {
-      Object.defineProperties(rows, {
-        rows: { value: rows, enumerable: false, writable: true },
-        columns: { value: res && res.columns ? res.columns : [], enumerable: false, writable: true },
-        rowsAffected: { value: res && res.rowsAffected !== undefined ? res.rowsAffected : 0, enumerable: false, writable: true },
-        lastInsertRowid: { value: res && res.lastInsertRowid !== undefined ? res.lastInsertRowid : null, enumerable: false, writable: true },
-        toJSON: { value: () => rows, enumerable: false, writable: true },
-      });
-    } catch {}
-    return rows;
-  };
-
-  const queryProxy = new Proxy(queryFn, {
-    get(target, prop, receiver) {
-      if (typeof prop === 'string' && !(prop in target)) {
-        const tableName = prop;
-        return {
-          findMany: async () => queryFn('SELECT * FROM "' + tableName + '"'),
-          findFirst: async () => {
-            const rows = await queryFn('SELECT * FROM "' + tableName + '" LIMIT 1');
-            return rows && rows.length > 0 ? rows[0] : null;
-          },
-        };
-      }
-      return Reflect.get(target, prop, receiver);
-    },
-  });
-
-  if (!client.query) client.query = queryProxy;
-  if (!client.all) client.all = async (sqlOrObj, args) => {
-    const res = await executeNormalized(sqlOrObj, args);
-    return res && res.rows ? [...res.rows] : [];
-  };
-  if (!client.get) client.get = async (sqlOrObj, args) => {
-    const res = await executeNormalized(sqlOrObj, args);
-    return res && res.rows && res.rows.length > 0 ? res.rows[0] : null;
-  };
-  if (!client.run) client.run = async (sqlOrObj, args) => executeNormalized(sqlOrObj, args);
-  if (!client.exec) client.exec = async (sql) => {
-    if (typeof client.executeMultiple === 'function') return await client.executeMultiple(sql);
-    return await origExec(sql);
-  };
-  if (!client.prepare) {
-    client.prepare = (sql) => ({
-      all: async (...args) => {
-        const flat = args.length === 1 && Array.isArray(args[0]) ? args[0] : args.flat();
-        const res = await origExec({ sql, args: flat });
-        return res && res.rows ? [...res.rows] : [];
-      },
-      get: async (...args) => {
-        const flat = args.length === 1 && Array.isArray(args[0]) ? args[0] : args.flat();
-        const res = await origExec({ sql, args: flat });
-        return res && res.rows && res.rows.length > 0 ? res.rows[0] : null;
-      },
-      run: async (...args) => {
-        const flat = args.length === 1 && Array.isArray(args[0]) ? args[0] : args.flat();
-        return await origExec({ sql, args: flat });
-      },
-    });
-  }
-  return client;
-}
-
-// Auto-wrap database client instances
-if (typeof db !== 'undefined') { wrapDbClient(db); }
-if (typeof client !== 'undefined') { wrapDbClient(client); }

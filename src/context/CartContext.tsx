@@ -1,146 +1,188 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import type { CartItem, CartPayload, Product } from '@/types';
+import type { CartItem, Product, AddToCartPayload, UpdateCartItemPayload } from '@/types';
 
 type CartContextValue = {
   items: CartItem[];
+  products: Product[];
+  isDrawerOpen: boolean;
+  isLoading: boolean;
   subtotal: number;
   itemCount: number;
-  isCartOpen: boolean;
-  openCart: () => void;
-  closeCart: () => void;
-  toggleCart: () => void;
-  addItem: (product: Product, payload?: CartPayload) => void;
-  addToCart: (product: Product, payload?: CartPayload) => void;
-  removeItem: (itemId: string) => void;
-  removeFromCart: (itemId: string) => void;
-  updateQuantity: (itemId: string, quantity: number) => void;
-  clearCart: () => void;
-  setCartOpen: (open: boolean) => void;
+  setDrawerOpen: (open: boolean) => void;
+  refreshProducts: () => Promise<void>;
+  addToCart: (payload: AddToCartPayload) => Promise<void>;
+  addItem: (payload: AddToCartPayload) => Promise<void>;
+  removeFromCart: (itemId: string) => Promise<void>;
+  removeItem: (itemId: string) => Promise<void>;
+  updateCartItem: (itemId: string, payload: UpdateCartItemPayload) => Promise<void>;
+  clearCart: () => Promise<void>;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
-const STORAGE_KEY = 'nddn-cart-v1';
 
-const safeNumber = (value: unknown, fallback = 0) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
-
-const normalizeItem = (item: Partial<CartItem> & { productId?: string; name?: string; image?: string; price?: number }) => ({
-  id: item?.id ?? crypto.randomUUID(),
-  productId: item?.productId ?? '',
-  name: item?.name ?? '',
-  slug: item?.slug,
-  image: item?.image ?? '',
-  price: safeNumber(item?.price),
-  quantity: Math.max(1, Math.floor(safeNumber(item?.quantity, 1))),
-  size: item?.size,
-  color: item?.color,
-});
+const safeJson = async <T,>(response: Response): Promise<T | null> => {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+};
 
 export function CartProvider({ children }: { children?: React.ReactNode }) {
+  const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isDrawerOpen, setDrawerOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
+  const refreshProducts = useCallback(async () => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as CartItem[];
-      if (Array.isArray(parsed)) setItems(parsed.map((item) => normalizeItem(item)));
+      const response = await fetch('/api/products', { credentials: 'include' });
+      const data = (await safeJson<{ data?: Product[] }>(response))?.data ?? [];
+      setProducts(Array.isArray(data) ? data : []);
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      setProducts([]);
     }
   }, []);
 
-  useEffect(() => {
+  const syncCart = useCallback(async (nextItems: CartItem[]) => {
+    setItems(nextItems);
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      await fetch('/api/cart', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: nextItems }),
+      });
     } catch {}
-  }, [items]);
+  }, []);
 
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.price) * safeNumber(item?.quantity, 1), 0), [items]);
-  const itemCount = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.quantity, 1), 0), [items]);
+  useEffect(() => {
+    void refreshProducts();
+  }, [refreshProducts]);
 
-  const openCart = useCallback(() => setIsCartOpen(true), []);
-  const closeCart = useCallback(() => setIsCartOpen(false), []);
-  const toggleCart = useCallback(() => setIsCartOpen((prev) => !prev), []);
-
-  const addItem = useCallback((product: Product, payload: CartPayload = {}) => {
-    if (!product?.id) return;
-    const quantity = Math.max(1, Math.floor(safeNumber(payload?.quantity, 1)));
-    const existing = items.find(
-      (item) => item?.productId === product.id && (item?.size ?? '') === (payload?.size ?? '') && (item?.color ?? '') === (payload?.color ?? '')
-    );
-    const stockLimit = Math.max(1, Math.floor(safeNumber((product as Product)?.size?.length, 99)));
-    setItems((current) => {
-      const next = [...current];
-      const index = next.findIndex(
-        (item) => item?.productId === product.id && (item?.size ?? '') === (payload?.size ?? '') && (item?.color ?? '') === (payload?.color ?? '')
-      );
-      if (index >= 0) {
-        const updatedQty = Math.min(stockLimit, safeNumber(next[index]?.quantity, 1) + quantity);
-        next[index] = { ...next[index], quantity: updatedQty };
-      } else {
-        next.unshift(
-          normalizeItem({
-            id: crypto.randomUUID(),
-            productId: product.id,
-            name: product.name,
-            slug: product.slug,
-            image: product.image,
-            price: product.price,
-            quantity: Math.min(stockLimit, quantity),
-            size: payload?.size,
-            color: payload?.color,
-          })
-        );
+  useEffect(() => {
+    const loadCart = async () => {
+      try {
+        const response = await fetch('/api/cart', { credentials: 'include' });
+        const data = (await safeJson<{ data?: CartItem[] }>(response))?.data ?? [];
+        setItems(Array.isArray(data) ? data : []);
+      } catch {
+        setItems([]);
       }
-      return next;
-    });
-    toast.success(existing ? 'Updated cart' : 'Added to cart');
-    openCart();
-  }, [items, openCart]);
-
-  const removeItem = useCallback((itemId: string) => {
-    setItems((current) => current.filter((item) => item?.id !== itemId));
-    toast.message('Removed from cart');
+    };
+    void loadCart();
   }, []);
 
-  const updateQuantity = useCallback((itemId: string, quantity: number) => {
-    const nextQty = Math.max(1, Math.floor(safeNumber(quantity, 1)));
-    setItems((current) => current.map((item) => (item?.id === itemId ? { ...item, quantity: nextQty } : item)));
-  }, []);
+  const addToCart = useCallback(async (payload: AddToCartPayload) => {
+    const quantity = Math.max(1, payload?.quantity ?? 1);
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/cart', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, quantity }),
+      });
+      const data = (await safeJson<{ data?: CartItem[] }>(response))?.data;
+      if (Array.isArray(data)) {
+        setItems(data);
+        return;
+      }
+      const product = products.find((p) => p.id === payload?.productId);
+      if (!product) return;
+      const existing = items.find(
+        (item) =>
+          item.productId === payload?.productId &&
+          (item.size ?? '') === (payload?.size ?? '') &&
+          (item.color ?? '') === (payload?.color ?? '')
+      );
+      const nextItems = existing
+        ? items.map((item) =>
+            item.id === existing.id ? { ...item, quantity: item.quantity + quantity } : item
+          )
+        : [
+            ...items,
+            {
+              id: crypto.randomUUID(),
+              productId: product.id,
+              product,
+              name: product.name,
+              image: product.images?.[0]?.url ?? '',
+              price: product.price,
+              quantity,
+              size: payload?.size,
+              color: payload?.color,
+            },
+          ];
+      await syncCart(nextItems);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, products, syncCart]);
 
-  const clearCart = useCallback(() => {
-    setItems([]);
-    toast.message('Cart cleared');
-  }, []);
+  const removeFromCart = useCallback(async (itemId: string) => {
+    setIsLoading(true);
+    try {
+      const nextItems = items.filter((item) => item.id !== itemId);
+      await fetch(`/api/cart/${encodeURIComponent(itemId)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+      await syncCart(nextItems);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, syncCart]);
 
-  const value = useMemo<CartContextValue>(
-    () => ({
-      items,
-      subtotal,
-      itemCount,
-      isCartOpen,
-      openCart,
-      closeCart,
-      toggleCart,
-      addItem,
-      addToCart: addItem,
-      removeItem,
-      removeFromCart: removeItem,
-      updateQuantity,
-      clearCart,
-      setCartOpen: setIsCartOpen,
-    }),
-    [items, subtotal, itemCount, isCartOpen, openCart, closeCart, toggleCart, addItem, removeItem, updateQuantity, clearCart]
-  );
+  const updateCartItem = useCallback(async (itemId: string, payload: UpdateCartItemPayload) => {
+    setIsLoading(true);
+    try {
+      const nextItems = items.map((item) => (item.id === itemId ? { ...item, ...payload } : item));
+      await fetch(`/api/cart/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload ?? {}),
+      }).catch(() => {});
+      await syncCart(nextItems);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [items, syncCart]);
+
+  const clearCart = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await fetch('/api/cart', { method: 'DELETE', credentials: 'include' }).catch(() => {});
+      await syncCart([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncCart]);
+
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + (item?.price ?? 0) * (item?.quantity ?? 0), 0), [items]);
+  const itemCount = useMemo(() => items.reduce((sum, item) => sum + (item?.quantity ?? 0), 0), [items]);
+
+  const value = useMemo<CartContextValue>(() => ({
+    items,
+    products,
+    isDrawerOpen,
+    isLoading,
+    subtotal,
+    itemCount,
+    setDrawerOpen,
+    refreshProducts,
+    addToCart,
+    addItem: addToCart,
+    removeFromCart,
+    removeItem: removeFromCart,
+    updateCartItem,
+    clearCart,
+  }), [items, products, isDrawerOpen, isLoading, subtotal, itemCount, refreshProducts, addToCart, removeFromCart, updateCartItem, clearCart]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within a CartProvider');
+  if (!context) throw new Error('useCart must be used within CartProvider');
   return context;
 }
 

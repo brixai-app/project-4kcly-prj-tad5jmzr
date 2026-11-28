@@ -1,85 +1,83 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
-import { toast } from 'sonner';
+import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Mail, MapPin, Phone, Send, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-export interface FooterProps {
-  className?: string;
-}
-
-export function Footer({ className = '' }: FooterProps) {
-  const [email, setEmail] = useState('');
+export function Footer({ className = "" }: { className?: string }) {
+  const [email, setEmail] = useState("");
   const year = useMemo(() => new Date().getFullYear(), []);
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const links = [
+    { label: "Customer Care", to: "/shop" },
+    { label: "Shipping & Returns", to: "/shop" },
+    { label: "Size Guide", to: "/shop" },
+    { label: "Privacy Policy", to: "/shop" },
+  ];
+  const socials = [
+    { icon: Instagram, label: "Instagram", href: "https://instagram.com" },
+    { icon: Twitter, label: "Twitter", href: "https://twitter.com" },
+    { icon: Linkedin, label: "LinkedIn", href: "https://linkedin.com" },
+    { icon: Youtube, label: "YouTube", href: "https://youtube.com" },
+  ];
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const value = email.trim();
-    if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      toast.error('Please enter a valid email address.');
-      return;
-    }
-    toast.success('You are on the list.');
-    setEmail('');
+    if (!email.trim()) return toast.error("Enter a valid email address.");
+    toast.success("Subscribed to NDDN Store updates.");
+    setEmail("");
   };
-
-  const linkClass = 'text-xs uppercase tracking-[0.22em] text-[#716A63] transition-colors hover:text-[#2B2B2B]';
-  const socialClass = 'inline-flex h-9 w-9 items-center justify-center border border-[#CFC6BA] text-[#2B2B2B] transition-colors hover:bg-[#8B0000] hover:text-white';
-
   return (
-    <footer className={`border-t border-[#CFC6BA] bg-[#FFFDF9] ${className}`}>
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1.4fr_1fr_1fr] lg:px-8">
-        <div className="space-y-4">
-          <p className="font-['Playfair_Display'] text-2xl font-light tracking-tight text-[#2B2B2B]">NDDN Store</p>
-          <p className="max-w-md text-sm leading-6 text-[#716A63]">
-            Warm ivory canvases, sharp tailoring, and deep-crimson accents for a quieter kind of luxury.
+    <footer className={cn("border-t border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C]", className)}>
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 md:grid-cols-12 md:px-6">
+        <div className="md:col-span-5">
+          <p className="font-['Playfair_Display'] text-3xl font-light tracking-tight">NDDN Store</p>
+          <p className="mt-4 max-w-md text-sm leading-6 text-[#68625C]">
+            A luxury fashion storefront shaped by editorial restraint, tactile materials, and a disciplined crimson accent.
           </p>
-          <p className="text-xs uppercase tracking-[0.22em] text-[#716A63]">© {year} NDDN Store</p>
-        </div>
-
-        <nav aria-label="Customer care" className="space-y-4">
-          <h2 className="text-xs uppercase tracking-[0.22em] text-[#2B2B2B]">Customer Care</h2>
-          <div className="flex flex-col gap-2.5">
-            <Link className={linkClass} to="/shop">Shop</Link>
-            <Link className={linkClass} to="/checkout">Checkout</Link>
-            <Link className={linkClass} to="/dashboard">Orders & Account</Link>
-            <a className={linkClass} href="mailto:care@nddnstore.com">care@nddnstore.com</a>
+          <div className="mt-6 space-y-3 text-sm text-[#68625C]">
+            <div className="flex items-center gap-3"><MapPin className="h-4 w-4 text-[#8B0000]" /><span>New Delhi, India</span></div>
+            <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-[#8B0000]" /><a className="hover:text-[#8B0000]" href="tel:+911234567890">+91 12345 67890</a></div>
+            <div className="flex items-center gap-3"><Mail className="h-4 w-4 text-[#8B0000]" /><a className="hover:text-[#8B0000]" href="mailto:care@nddnstore.com">care@nddnstore.com</a></div>
           </div>
-        </nav>
-
-        <div className="space-y-4">
-          <h2 className="text-xs uppercase tracking-[0.22em] text-[#2B2B2B]">Shipping & Social</h2>
-          <div className="flex flex-col gap-2.5">
-            <Link className={linkClass} to="/shop?filter=shipping">Shipping Information</Link>
-            <Link className={linkClass} to="/shop?filter=returns">Returns & Exchanges</Link>
-            <div className="flex flex-wrap gap-2">
-              <a className={socialClass} href="https://instagram.com" target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram size={16} /></a>
-              <a className={socialClass} href="https://twitter.com" target="_blank" rel="noreferrer" aria-label="Twitter"><Twitter size={16} /></a>
-              <a className={socialClass} href="https://linkedin.com" target="_blank" rel="noreferrer" aria-label="LinkedIn"><Linkedin size={16} /></a>
-              <a className={socialClass} href="https://youtube.com" target="_blank" rel="noreferrer" aria-label="YouTube"><Youtube size={16} /></a>
+        </div>
+        <div className="md:col-span-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#68625C]">Customer Care</p>
+          <nav className="mt-4 flex flex-col gap-2.5">
+            {links.map((link) => (
+              <Link key={link.label} to={link.to} className="min-w-0 truncate text-sm text-[#1C1C1C] transition-colors hover:text-[#8B0000]">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <div className="md:col-span-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#68625C]">Newsletter</p>
+          <form onSubmit={submit} className="mt-4 flex flex-col gap-3">
+            <label className="text-sm text-[#68625C]" htmlFor="footer-email">Receive collection notes and private drops.</label>
+            <div className="flex items-center gap-2 border border-[#CFC5B8] bg-white px-3 py-2">
+              <input id="footer-email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email address" className="min-w-0 flex-1 bg-transparent text-sm text-[#1C1C1C] outline-none placeholder:text-[#68625C]" />
+              <button type="submit" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-[#8B0000] transition-colors hover:text-[#650000]">
+                <Send className="h-4 w-4" /> Join
+              </button>
             </div>
+          </form>
+          <div className="mt-6 flex flex-wrap gap-3">
+            {socials.map((social) => {
+              const Icon = social.icon;
+              return (
+                <a key={social.label} href={social.href} target="_blank" rel="noreferrer" aria-label={social.label} className="inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] text-[#1C1C1C] transition-colors hover:border-[#8B0000] hover:text-[#8B0000]">
+                  <Icon className="h-4 w-4" />
+                </a>
+              );
+            })}
           </div>
         </div>
       </div>
-
-      <div className="border-t border-[#CFC6BA]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8">
-          <p className="max-w-xl text-sm leading-6 text-[#716A63]">
-            A refined wardrobe built for considered dressing, delivered with precision and care.
-          </p>
-          <form onSubmit={handleSubmit} className="flex w-full max-w-md items-stretch gap-2">
-            <label className="sr-only" htmlFor="footer-email">Email address</label>
-            <input
-              id="footer-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email for collection notes"
-              className="min-w-0 flex-1 border border-[#CFC6BA] bg-[#FFFDF9] px-4 py-3 text-sm text-[#2B2B2B] outline-none placeholder:text-[#716A63] focus:border-[#8B0000]"
-            />
-            <button type="submit" className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000]">
-              Join <ArrowRight size={14} />
-            </button>
-          </form>
+      <div className="border-t border-[#CFC5B8]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 text-xs uppercase tracking-[0.22em] text-[#68625C] md:flex-row md:items-center md:justify-between md:px-6">
+          <p>© {year} NDDN Store</p>
+          <a href="#top" className="inline-flex items-center gap-2 text-[#1C1C1C] transition-colors hover:text-[#8B0000]">
+            Back to top <ArrowRight className="h-4 w-4" />
+          </a>
         </div>
       </div>
     </footer>

@@ -1,49 +1,56 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Circle as ChevronLeft, ChevronRight, Check, ShoppingBag, Heart } from 'lucide-react';
-import { toast } from 'sonner';
-import { useCart } from '@/context/CartContext';
-import type { Product } from '@/types';
-import { cn } from '@/lib/utils';
+import React, { useEffect, useMemo, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { AnimatePresence, motion } from "framer-motion";
+import { X, ChevronDown, Check, ShoppingBag, Heart } from 'lucide-react';
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import type { Product } from "@/types";
+import { useCart } from "@/context/CartContext";
 
 export interface ProductDetailModalProps {
   product?: Product | null;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onQuickView?: (product: Product) => void;
 }
 
 export function ProductDetailModal({
   product = null,
   open = false,
   onOpenChange = () => {},
-  onQuickView,
 }: ProductDetailModalProps) {
-  const { addItem } = useCart() as { addItem?: (payload: { productId: string; quantity?: number; size?: string; color?: string }) => void };
-  const images = useMemo(() => {
-    const list = product?.images?.length ? product.images : product?.image ? [product.image] : [];
-    return list.filter(Boolean);
-  }, [product]);
-  const [index, setIndex] = useState(0);
-  const [size, setSize] = useState('');
-  const [color, setColor] = useState('');
+  const { addToCart } = useCart?.() ?? {};
+  const [size, setSize] = useState("");
+  const [color, setColor] = useState("");
+  const [qty, setQty] = useState(1);
+
+  const images = useMemo(() => product?.images?.filter(Boolean) ?? [], [product]);
+  const primaryImage = images?.[0]?.url ?? "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85";
+  const sizes = product?.sizes ?? [];
+  const colors = product?.colors ?? [];
+  const inStock = product?.inStock ?? true;
 
   useEffect(() => {
-    setIndex(0);
-    setSize(product?.size?.[0] ?? '');
-    setColor(product?.color ?? '');
-  }, [product?.id, product?.size, product?.color]);
-
-  const currentImage = images?.[index] ?? product?.image ?? '';
-  const inStock = product?.inStock ?? true;
-  const sizes = product?.size ?? [];
-  const colors = product?.color ? [product.color] : [];
+    setSize(sizes?.[0] ?? "");
+    setColor(colors?.[0] ?? "");
+    setQty(1);
+  }, [product?.id, sizes, colors]);
 
   const handleAdd = () => {
-    if (!product?.id) return;
-    addItem?.({ productId: product.id, quantity: 1, size: size || undefined, color: color || undefined });
-    toast.success(`${product?.name ?? 'Item'} added to cart`);
+    if (!product) return;
+    if (!inStock) {
+      toast.error("This piece is currently out of stock.");
+      return;
+    }
+    if (sizes.length > 0 && !size) {
+      toast.error("Please select a size.");
+      return;
+    }
+    if (colors.length > 0 && !color) {
+      toast.error("Please select a color.");
+      return;
+    }
+    addToCart?.({ productId: product.id, quantity: qty, size: size || undefined, color: color || undefined });
+    toast.success("Added to cart.");
     onOpenChange(false);
   };
 
@@ -54,7 +61,7 @@ export function ProductDetailModal({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild>
               <motion.div
-                className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]"
+                className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -62,156 +69,161 @@ export function ProductDetailModal({
             </Dialog.Overlay>
             <Dialog.Content asChild>
               <motion.div
-                className="fixed inset-x-0 top-0 z-50 mx-auto flex h-full w-full max-w-6xl items-center justify-center p-3 sm:p-6"
                 initial={{ opacity: 0, y: 24, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 24, scale: 0.98 }}
-                transition={{ duration: 0.28, ease: 'easeOut' }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="fixed left-1/2 top-1/2 z-50 w-[min(94vw,980px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden border border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C] shadow-2xl"
               >
-                <div className="grid max-h-[92vh] w-full overflow-hidden rounded-none border border-[#CFC6BA] bg-[#FFFDF9] shadow-2xl md:grid-cols-[1.15fr_0.85fr]">
-                  <div className="relative min-h-[42vh] overflow-hidden bg-[#F5F1EB]">
+                <div className="grid max-h-[88vh] grid-cols-1 md:grid-cols-[1.05fr_0.95fr]">
+                  <div className="relative min-h-[320px] bg-[#F5F1EB]">
                     <img
-                      src={currentImage || 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=800&q=80'}
-                      alt={product?.name ?? 'Product image'}
+                      src={primaryImage}
+                      alt={product?.images?.[0]?.alt ?? product?.name ?? "Product image"}
                       crossOrigin="anonymous"
                       className="h-full w-full object-cover"
                     />
-                    <div className="absolute left-3 top-3 flex items-center gap-2">
+                    <Dialog.Close asChild>
                       <button
                         type="button"
-                        onClick={() => setIndex((v) => Math.max(0, v - 1))}
-                        disabled={index <= 0}
-                        className="inline-flex h-9 w-9 items-center justify-center border border-[#CFC6BA] bg-[#FFFDF9]/90 text-[#2B2B2B] transition hover:bg-white disabled:opacity-40"
+                        className="absolute right-3 top-3 inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] bg-[#FAF9F6] text-[#1C1C1C] transition hover:bg-[#8B0000] hover:text-white"
+                        aria-label="Close product preview"
                       >
-                        <ChevronLeft className="h-4 w-4" />
+                        <X className="h-4 w-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setIndex((v) => Math.min(images.length - 1, v + 1))}
-                        disabled={index >= images.length - 1}
-                        className="inline-flex h-9 w-9 items-center justify-center border border-[#CFC6BA] bg-[#FFFDF9]/90 text-[#2B2B2B] transition hover:bg-white disabled:opacity-40"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="absolute bottom-3 left-3 right-3 flex gap-2 overflow-x-auto">
-                      {images.map((img, i) => (
-                        <button
-                          key={`${img}-${i}`}
-                          type="button"
-                          onClick={() => setIndex(i)}
-                          className={cn(
-                            'h-16 w-12 shrink-0 overflow-hidden border transition',
-                            i === index ? 'border-[#8B0000]' : 'border-[#CFC6BA]'
-                          )}
-                        >
-                          <img src={img} alt="" crossOrigin="anonymous" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
+                    </Dialog.Close>
                   </div>
 
-                  <div className="flex min-h-0 flex-col border-t border-[#CFC6BA] md:border-l md:border-t-0">
-                    <div className="flex items-start justify-between gap-4 border-b border-[#CFC6BA] p-5">
+                  <div className="flex min-h-0 flex-col">
+                    <div className="flex items-start justify-between gap-4 border-b border-[#CFC5B8] px-5 py-4">
                       <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#716A63]">
-                          {product?.collection ?? product?.category ?? 'Collection'}
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#8B0000]">
+                          {product?.collection ?? product?.category ?? "Collection"}
                         </p>
-                        <Dialog.Title className="mt-2 font-['Playfair_Display'] text-3xl font-light tracking-tight text-[#2B2B2B]">
-                          {product?.name ?? 'Untitled Product'}
+                        <Dialog.Title className="mt-2 font-['Playfair_Display'] text-3xl font-normal tracking-tight text-[#1C1C1C]">
+                          {product?.name ?? "Untitled piece"}
                         </Dialog.Title>
                       </div>
-                      <Dialog.Close asChild>
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center border border-[#CFC6BA] text-[#2B2B2B] transition hover:bg-[#F5F1EB]"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </Dialog.Close>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-[#1C1C1C]">
+                          {product?.currency ?? "₹"}
+                          {product?.price?.toLocaleString?.("en-IN") ?? "0"}
+                        </p>
+                        {typeof product?.compareAtPrice === "number" ? (
+                          <p className="text-xs text-[#68625C] line-through">
+                            {product?.currency ?? "₹"}
+                            {product?.compareAtPrice?.toLocaleString?.("en-IN") ?? ""}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-[#2B2B2B]">₹{product?.price?.toLocaleString?.('en-IN') ?? '0'}</p>
-                          {product?.compareAtPrice ? (
-                            <p className="text-xs text-[#716A63] line-through">₹{product.compareAtPrice.toLocaleString('en-IN')}</p>
-                          ) : null}
-                        </div>
-                        <div className={cn('inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em]', inStock ? 'text-[#2B2B2B]' : 'text-[#8B0000]')}>
-                          <span className={cn('h-2 w-2 rounded-full', inStock ? 'bg-[#2B2B2B]' : 'bg-[#8B0000]')} />
-                          {inStock ? 'In stock' : 'Sold out'}
-                        </div>
-                      </div>
+                    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                      <div className="space-y-5">
+                        <p className="text-sm leading-6 text-[#68625C]">
+                          {product?.description ?? "A refined wardrobe essential with a tailored silhouette and editorial finish."}
+                        </p>
 
-                      <p className="mt-4 text-sm leading-6 text-[#716A63]">{product?.description ?? 'A refined piece from the NDDN Store collection, designed with a precise silhouette and elevated finish.'}</p>
+                        <div className="flex items-center gap-3 text-xs uppercase tracking-[0.22em] text-[#68625C]">
+                          <span className={cn("inline-flex items-center gap-1", inStock ? "text-[#1C1C1C]" : "text-[#8B0000]")}>
+                            {inStock ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                            {inStock ? "In stock" : "Sold out"}
+                          </span>
+                          <span>{product?.category ?? "Fashion"}</span>
+                        </div>
 
-                      <div className="mt-6 space-y-4">
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#716A63]">Size</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {(sizes.length ? sizes : ['S', 'M', 'L']).map((s) => (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() => setSize(s)}
-                                className={cn(
-                                  'min-w-0 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.22em] transition',
-                                  size === s ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#CFC6BA] bg-white text-[#2B2B2B] hover:bg-[#F5F1EB]'
-                                )}
-                              >
-                                {s}
-                              </button>
-                            ))}
+                        {sizes.length > 0 ? (
+                          <div>
+                            <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-[#68625C]">
+                              <span>Size</span>
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {sizes.map((s) => (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  onClick={() => setSize(s)}
+                                  className={cn(
+                                    "min-w-0 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition",
+                                    size === s
+                                      ? "border-[#8B0000] bg-[#8B0000] text-white"
+                                      : "border-[#CFC5B8] bg-white text-[#1C1C1C] hover:border-[#1C1C1C]"
+                                  )}
+                                >
+                                  {s}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        ) : null}
 
-                        <div>
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#716A63]">Color</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {(colors.length ? colors : ['Ivory']).map((c) => (
-                              <button
-                                key={c}
-                                type="button"
-                                onClick={() => setColor(c)}
-                                className={cn(
-                                  'inline-flex items-center gap-2 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.22em] transition',
-                                  color === c ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#CFC6BA] bg-white text-[#2B2B2B] hover:bg-[#F5F1EB]'
-                                )}
-                              >
-                                <span className={cn('h-2.5 w-2.5 rounded-full border', color === c ? 'border-white bg-white' : 'border-[#2B2B2B] bg-[#CFC6BA]')} />
-                                {c}
-                              </button>
-                            ))}
+                        {colors.length > 0 ? (
+                          <div>
+                            <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-[#68625C]">
+                              <span>Color</span>
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {colors.map((c) => (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onClick={() => setColor(c)}
+                                  className={cn(
+                                    "min-w-0 border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition",
+                                    color === c
+                                      ? "border-[#8B0000] bg-[#8B0000] text-white"
+                                      : "border-[#CFC5B8] bg-white text-[#1C1C1C] hover:border-[#1C1C1C]"
+                                  )}
+                                >
+                                  {c}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      </div>
+                        ) : null}
 
-                      <div className="mt-6 border-t border-[#CFC6BA] pt-4">
-                        <div className="flex items-center gap-2 text-sm text-[#2B2B2B]">
-                          <Check className="h-4 w-4 text-[#8B0000]" />
-                          <span>{inStock ? 'Ready to ship within 24 hours' : 'Notify me when available'}</span>
-                        </div>
-                        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                        <div className="flex items-center justify-between border-t border-[#CFC5B8] pt-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setQty((v) => Math.max(1, v - 1))}
+                              className="inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] bg-white text-[#1C1C1C] transition hover:border-[#1C1C1C]"
+                              aria-label="Decrease quantity"
+                            >
+                              <span className="text-lg leading-none">−</span>
+                            </button>
+                            <span className="min-w-10 text-center text-sm font-semibold text-[#1C1C1C]">{qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => setQty((v) => v + 1)}
+                              className="inline-flex h-10 w-10 items-center justify-center border border-[#CFC5B8] bg-white text-[#1C1C1C] transition hover:border-[#1C1C1C]"
+                              aria-label="Increase quantity"
+                            >
+                              <span className="text-lg leading-none">+</span>
+                            </button>
+                          </div>
+
                           <button
                             type="button"
                             onClick={handleAdd}
-                            disabled={!product?.id || !inStock}
-                            className="inline-flex flex-1 items-center justify-center gap-2 bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.24em] text-white transition hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!inStock}
+                            className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <ShoppingBag className="h-4 w-4" />
-                            Add to Cart
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => (product && onQuickView ? onQuickView(product) : undefined)}
-                            className="inline-flex items-center justify-center gap-2 border border-[#CFC6BA] px-4 py-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#2B2B2B] transition hover:bg-[#F5F1EB]"
-                          >
-                            <Heart className="h-4 w-4" />
-                            Save
+                            Add to cart
                           </button>
                         </div>
+
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#1C1C1C] transition hover:text-[#8B0000]"
+                          onClick={() => toast.message("Saved to wishlist.")}
+                        >
+                          <Heart className="h-4 w-4" />
+                          Save to wishlist
+                        </button>
                       </div>
                     </div>
                   </div>

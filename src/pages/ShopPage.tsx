@@ -1,202 +1,181 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChevronDown, Filter, Search, Sliders } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import type { Product, ProductCategory } from '@/types';
-import { ProductCard } from '@/components/ProductCard';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Filter, Search, Sliders } from 'lucide-react';
+import { Product } from "@/types";
+import ProductCard from "@/components/ProductCard";
+import { cn } from "@/lib/utils";
 
 export function ShopPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
+  const [size, setSize] = useState("All");
+  const [color, setColor] = useState("All");
+  const [sort, setSort] = useState("featured");
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
-  const [sort, setSort] = useState<'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating'>('featured');
 
   useEffect(() => {
-    let active = true;
+    let alive = true;
     const load = async () => {
-      setLoading(true);
       try {
-        const res = await fetch('/api/products');
-        const json = await res.json().catch(() => null);
-        const payload = json?.data ?? json ?? [];
-        const list = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : [];
-        if (active) setProducts(list.filter(Boolean));
+        const res = await fetch("/api/products");
+        const json = await res.json().catch(() => ({}));
+        const raw = Array.isArray(json?.data) ? json.data : Array.isArray(json?.products) ? json.products : Array.isArray(json?.items) ? json.items : [];
+        if (alive) setProducts(raw.filter(Boolean));
       } catch {
-        if (active) setProducts([]);
+        if (alive) setProducts([]);
       } finally {
-        if (active) setLoading(false);
+        if (alive) setLoading(false);
       }
     };
     load();
     return () => {
-      active = false;
+      alive = false;
     };
   }, []);
 
-  const categories = useMemo(() => {
-    const base = ['all', 'tailoring', 'outerwear', 'knitwear', 'shirts', 'trousers', 'accessories'];
-    const fromData = Array.from(new Set(products.map((p) => String(p?.category ?? '').toLowerCase()).filter(Boolean)));
-    return Array.from(new Set([...base, ...fromData]));
-  }, [products]);
+  const categories = useMemo(() => ["All", ...Array.from(new Set(products.map((p) => (p?.category ?? "Uncategorized").trim()).filter(Boolean)))], [products]);
+  const sizes = useMemo(() => ["All", ...Array.from(new Set(products.flatMap((p) => p?.sizes ?? []).filter(Boolean)))], [products]);
+  const colors = useMemo(() => ["All", ...Array.from(new Set(products.flatMap((p) => p?.colors ?? []).filter(Boolean)))], [products]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = products.filter((p) => {
-      const matchesQuery =
-        !q ||
-        [p?.name, p?.description, p?.collection, p?.category]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(q));
-      const matchesCategory = category === 'all' || String(p?.category ?? '').toLowerCase() === category.toLowerCase();
-      return matchesQuery && matchesCategory;
+      const name = (p?.name ?? "").toLowerCase();
+      const desc = (p?.description ?? "").toLowerCase();
+      const cat = (p?.category ?? "").toLowerCase();
+      const col = (p?.collection ?? "").toLowerCase();
+      const matchesQuery = !q || [name, desc, cat, col].some((v) => v.includes(q));
+      const matchesCategory = category === "All" || cat === category.toLowerCase();
+      const matchesSize = size === "All" || (p?.sizes ?? []).some((s) => s?.toLowerCase() === size.toLowerCase());
+      const matchesColor = color === "All" || (p?.colors ?? []).some((c) => c?.toLowerCase() === color.toLowerCase());
+      return matchesQuery && matchesCategory && matchesSize && matchesColor;
     });
-
-    const sorted = [...list].sort((a, b) => {
-      if (sort === 'price-asc') return (a?.price ?? 0) - (b?.price ?? 0);
-      if (sort === 'price-desc') return (b?.price ?? 0) - (a?.price ?? 0);
-      if (sort === 'rating') return (b?.rating ?? 0) - (a?.rating ?? 0);
-      if (sort === 'newest') return new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime();
-      return Number(Boolean(b?.featured)) - Number(Boolean(a?.featured));
+    return list.sort((a, b) => {
+      if (sort === "price-asc") return (a?.price ?? 0) - (b?.price ?? 0);
+      if (sort === "price-desc") return (b?.price ?? 0) - (a?.price ?? 0);
+      if (sort === "newest") return new Date(b?.createdAt ?? 0).getTime() - new Date(a?.createdAt ?? 0).getTime();
+      return Number(b?.featured ?? false) - Number(a?.featured ?? false) || (b?.rating ?? 0) - (a?.rating ?? 0);
     });
-    return sorted;
-  }, [products, query, category, sort]);
-
-  const skeletons = Array.from({ length: 8 });
+  }, [products, query, category, size, color, sort]);
 
   return (
-    <main className="bg-[#F5F1EB] text-[#2B2B2B]">
-      <section className="border-b border-[#CFC6BA] bg-[#FFFDF9]">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <main className="bg-[#F5F1EB] text-[#1C1C1C]">
+      <section className="border-b border-[#CFC5B8] bg-[#FAF9F6]">
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 md:grid-cols-[1.1fr_0.9fr] md:px-6 lg:px-8">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#8B0000]">Shop</p>
+            <h1 className="mt-3 font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl lg:text-6xl">
+              Curated pieces, live from the atelier.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#68625C] sm:text-base">
+              Explore the full collection with refined filters, editorial pacing, and verified product imagery.
+            </p>
+          </div>
+          <div className="flex items-end justify-between gap-4 border border-[#CFC5B8] bg-white p-4">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#716A63]">Shop</p>
-              <h1 className="mt-2 font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl">NDDN Store</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-[#716A63]">
-                A curated edit of tailoring, outerwear, and refined essentials shaped by warm ivory surfaces and deep-crimson accents.
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#68625C]">Collection index</p>
+              <p className="mt-2 text-sm text-[#1C1C1C]">{filtered.length} pieces</p>
             </div>
-            <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.22em] text-[#716A63]">
-              <span>{filtered.length} pieces</span>
-              <span className="h-4 w-px bg-[#CFC6BA]" />
-              <span>Editorial selection</span>
-            </div>
+            <Link to="/" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-[#8B0000]">
+              View lookbook <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
-        <aside className="sticky top-24 h-fit border border-[#CFC6BA] bg-[#FFFDF9] p-4">
-          <div className="flex items-center gap-2 border-b border-[#CFC6BA] pb-4">
-            <Filter className="h-4 w-4" />
-            <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.28em]">Filters</h2>
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-6 md:grid-cols-[280px_minmax(0,1fr)] md:px-6 lg:px-8">
+        <aside className="min-w-0 border border-[#CFC5B8] bg-[#FAF9F6] p-4">
+          <div className="flex items-center gap-2 border-b border-[#CFC5B8] pb-3">
+            <Filter className="h-4 w-4 text-[#8B0000]" />
+            <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.35em] text-[#1C1C1C]">Filters</h2>
           </div>
-
           <div className="mt-4 flex flex-col gap-2.5">
-            <label className="flex items-center gap-2 border border-[#CFC6BA] bg-white px-3 py-2">
-              <Search className="h-4 w-4 shrink-0 text-[#716A63]" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search products"
-                className="min-w-0 w-full bg-transparent text-sm outline-none placeholder:text-[#716A63]"
-              />
-            </label>
-
-            <div className="flex items-center gap-2 border border-[#CFC6BA] bg-white px-3 py-2">
-              <Sliders className="h-4 w-4 shrink-0 text-[#716A63]" />
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as typeof sort)}
-                className="min-w-0 w-full bg-transparent text-sm outline-none"
-              >
-                <option value="featured">Featured</option>
-                <option value="newest">Newest</option>
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">Price: High to Low</option>
-                <option value="rating">Top Rated</option>
-              </select>
-            </div>
-
-            <div className="pt-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#716A63]">Category</p>
-              <div className="mt-3 flex flex-col gap-2.5">
-                {categories.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setCategory(item)}
-                    className={cn(
-                      'flex items-center justify-between border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] transition-colors',
-                      category === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#CFC6BA] bg-white text-[#2B2B2B] hover:border-[#8B0000]'
-                    )}
-                  >
-                    <span className="min-w-0 truncate">{item}</span>
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                  </button>
-                ))}
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">Search</span>
+              <div className="flex items-center gap-2 border border-[#CFC5B8] bg-white px-3 py-2">
+                <Search className="h-4 w-4 shrink-0 text-[#68625C]" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products" className="w-full bg-transparent text-sm outline-none placeholder:text-[#68625C]" />
               </div>
-            </div>
-
-            <Link
-              to="/checkout"
-              className="mt-2 inline-flex items-center justify-center border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.22em] text-white transition-colors hover:bg-[#650000]"
-            >
-              View Cart & Checkout
-            </Link>
+            </label>
+            <FilterGroup label="Category" options={categories} value={category} onChange={setCategory} />
+            <FilterGroup label="Size" options={sizes} value={size} onChange={setSize} />
+            <FilterGroup label="Color" options={colors} value={color} onChange={setColor} />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">Sort</span>
+              <div className="flex items-center gap-2 border border-[#CFC5B8] bg-white px-3 py-2">
+                <Sliders className="h-4 w-4 shrink-0 text-[#68625C]" />
+                <select value={sort} onChange={(e) => setSort(e.target.value)} className="w-full bg-transparent text-sm outline-none">
+                  <option value="featured">Featured</option>
+                  <option value="newest">Newest</option>
+                  <option value="price-asc">Price: Low to High</option>
+                  <option value="price-desc">Price: High to Low</option>
+                </select>
+              </div>
+            </label>
           </div>
         </aside>
 
         <section className="min-w-0">
-          <div className="mb-4 flex items-center justify-between gap-3 border-b border-[#CFC6BA] pb-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#716A63]">
-              {loading ? 'Loading collection' : `${filtered.length} results`}
-            </p>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#716A63]">Masonry edit</p>
-          </div>
-
-          <div className="mb-4 flex flex-wrap gap-2 lg:hidden">
-            {categories.slice(0, 6).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setCategory(item)}
-                className={cn(
-                  'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em]',
-                  category === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#CFC6BA] bg-white text-[#2B2B2B]'
-                )}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-
           {loading ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {skeletons.map((_, i) => (
-                <div key={i} className="border border-[#CFC6BA] bg-[#FFFDF9]">
-                  <div className="aspect-[3/4] animate-pulse bg-[#E7E0D6]" />
-                  <div className="space-y-3 p-4">
-                    <div className="h-3 w-24 animate-pulse bg-[#E7E0D6]" />
-                    <div className="h-4 w-3/4 animate-pulse bg-[#E7E0D6]" />
-                    <div className="h-3 w-16 animate-pulse bg-[#E7E0D6]" />
-                  </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="aspect-[3/4] animate-pulse border border-[#CFC5B8] bg-[#FAF9F6]" />
+              ))}
+            </div>
+          ) : filtered.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((product, index) => (
+                <div key={product?.id ?? product?.slug ?? `${product?.name ?? "product"}-${index}`} className={cn(index % 3 === 0 ? "xl:translate-y-0" : index % 3 === 1 ? "xl:translate-y-8" : "xl:translate-y-16")}>
+                  <ProductCard product={product} />
                 </div>
               ))}
             </div>
           ) : (
-            <motion.div layout className="columns-1 gap-4 sm:columns-2 xl:columns-3">
-              {filtered.map((product) => (
-                <motion.div key={product?.id ?? product?.slug} layout className="mb-4 break-inside-avoid">
-                  <ProductCard product={product} />
-                </motion.div>
-              ))}
-            </motion.div>
+            <div className="border border-[#CFC5B8] bg-[#FAF9F6] p-10 text-center">
+              <p className="text-sm uppercase tracking-[0.3em] text-[#68625C]">No results found</p>
+              <p className="mt-3 text-sm text-[#68625C]">Try adjusting your filters or search terms.</p>
+            </div>
           )}
         </section>
-      </div>
+      </section>
     </main>
+  );
+}
+
+function FilterGroup({
+  label = "",
+  options = [],
+  value = "All",
+  onChange = () => {},
+}: {
+  label?: string;
+  options?: string[];
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[#68625C]">{label}</span>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const active = value === option;
+          return (
+            <button
+              key={option}
+              type="button"
+              onClick={() => onChange(option)}
+              className={cn(
+                "min-w-0 border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.25em] transition-colors",
+                active ? "border-[#8B0000] bg-[#8B0000] text-white" : "border-[#CFC5B8] bg-white text-[#1C1C1C] hover:border-[#8B0000] hover:text-[#8B0000]"
+              )}
+            >
+              <span className="block truncate">{option}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

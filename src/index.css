@@ -5,22 +5,22 @@
 :root {
   --color-bg: #F5F1EB;
   --color-bg-rgb: 245, 241, 235;
-  --color-surface: #FFFDF9;
-  --color-surface-rgb: 255, 253, 249;
+  --color-surface: #FAF9F6;
+  --color-surface-rgb: 250, 249, 246;
   --color-surface-hover: #EEE7DE;
   --color-surface-hover-rgb: 238, 231, 222;
-  --color-border: #CFC6BA;
-  --color-border-rgb: 207, 198, 186;
-  --color-text-primary: #2B2B2B;
-  --color-text-primary-rgb: 43, 43, 43;
-  --color-text-muted: #716A63;
-  --color-text-muted-rgb: 113, 106, 99;
+  --color-border: #CFC5B8;
+  --color-border-rgb: 207, 197, 184;
+  --color-text-primary: #1C1C1C;
+  --color-text-primary-rgb: 28, 28, 28;
+  --color-text-muted: #68625C;
+  --color-text-muted-rgb: 104, 98, 92;
   --color-accent: #8B0000;
   --color-accent-rgb: 139, 0, 0;
   --color-accent-hover: #650000;
   --color-accent-hover-rgb: 101, 0, 0;
   --color-accent-text: #ffffff;
-  --radius-theme: 2px;
+  --radius-theme: 4px;
   --font-heading: 'Playfair Display', sans-serif;
   --font-body: 'Inter', sans-serif;
 }

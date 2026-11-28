@@ -1,58 +1,53 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import { Header } from './components/Header';
-import { Footer } from './components/Footer';
-import { CartDrawer } from './components/CartDrawer';
-import { AuthModal } from './components/AuthModal';
-import { CartProvider } from './context/CartContext';
-import { Home } from './pages/Home';
-import { ShopPage } from './pages/ShopPage';
-import { ProductPage } from './pages/ProductPage';
-import { CheckoutPage } from './pages/CheckoutPage';
-import { DashboardPage } from './pages/DashboardPage';
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import { CartDrawer } from '@/components/CartDrawer';
+import { CartProvider } from '@/context/CartContext';
+import { Home } from '@/pages/Home';
+import { ShopPage } from '@/pages/ShopPage';
+import { ProductDetailPage } from '@/pages/ProductDetailPage';
+import { CheckoutPage } from '@/pages/CheckoutPage';
+import { DashboardPage } from '@/pages/DashboardPage';
 import { cn } from '@/lib/utils';
 
 function AppShell() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
   useEffect(() => {
-    const state = location.state as { openCart?: boolean; openAuth?: boolean; authMode?: 'signin' | 'signup' } | null;
+    const state = location.state as { openCart?: boolean; openAuth?: boolean; from?: string } | null;
     if (state?.openCart) setCartOpen(true);
-    if (state?.openAuth) {
-      setAuthMode(state?.authMode ?? 'signin');
-      setAuthOpen(true);
-    }
-  }, [location.state]);
+    if (state?.openAuth) setAuthOpen(true);
+    if (state?.openCart || state?.openAuth) navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state, navigate]);
 
-  const shellClassName = useMemo(
-    () => cn('min-h-screen bg-[#F5F1EB] text-[#2B2B2B] antialiased'),
+  const shellClass = useMemo(
+    () => cn('min-h-screen bg-[#F5F1EB] text-[#1C1C1C] antialiased'),
     []
   );
 
   return (
-    <div className={shellClassName}>
-      <Header />
-      <main className="min-h-[calc(100vh-8rem)]">
+    <div className={shellClass}>
+      <Header className="sticky top-0 z-40" />
+      <main className="relative">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/shop" element={<ShopPage />} />
-          <Route path="/product/:slug" element={<ProductPage />} />
+          <Route path="/product/:id" element={<ProductDetailPage />} />
+          <Route path="/cart" element={<CheckoutPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
+          <Route path="/login" element={<DashboardPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/cart" element={<Navigate to="/" replace state={{ openCart: true }} />} />
-          <Route path="/auth" element={<Navigate to="/" replace state={{ openAuth: true, authMode: 'signin' }} />} />
-          <Route path="/login" element={<Navigate to="/" replace state={{ openAuth: true, authMode: 'signin' }} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <Footer />
       <CartDrawer open={cartOpen} onOpenChange={setCartOpen} />
-      <AuthModal open={authOpen} onOpenChange={setAuthOpen} defaultMode={authMode} />
       <Toaster position="top-right" richColors closeButton />
+      {authOpen ? null : null}
     </div>
   );
 }

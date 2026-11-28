@@ -1,19 +1,24 @@
-export type ProductCategory = 'tailoring' | 'outerwear' | 'knitwear' | 'shirts' | 'trousers' | 'accessories';
+export type ID = string;
+
+export interface ProductImage {
+  url: string;
+  alt?: string;
+  order?: number;
+}
 
 export interface Product {
-  id: string;
-  name: string;
+  id: ID;
   slug: string;
+  name: string;
   description?: string;
+  category: string;
+  collection?: string;
   price: number;
   compareAtPrice?: number | null;
-  category: ProductCategory | string;
-  collection?: string;
-  image: string;
-  images?: string[];
-  color?: string;
-  size?: string[];
-  material?: string;
+  currency?: string;
+  images: ProductImage[];
+  sizes?: string[];
+  colors?: string[];
   inStock?: boolean;
   featured?: boolean;
   rating?: number;
@@ -22,96 +27,106 @@ export interface Product {
   updatedAt?: string;
 }
 
+export interface Review {
+  id: ID;
+  productId: ID;
+  userId?: ID;
+  userName: string;
+  rating: number;
+  title?: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface CartItem {
-  id: string;
-  productId: string;
+  id: ID;
+  productId: ID;
+  product?: Product;
   name: string;
-  slug?: string;
-  image: string;
+  image?: string;
   price: number;
   quantity: number;
   size?: string;
   color?: string;
 }
 
-export interface User {
-  id: string;
-  name?: string | null;
-  email: string;
-  image?: string | null;
-  role?: 'customer' | 'admin';
-  createdAt?: string;
-}
-
 export interface Address {
-  id: string;
-  userId?: string;
   fullName: string;
   line1: string;
-  line2?: string | null;
+  line2?: string;
   city: string;
-  state: string;
+  state?: string;
   postalCode: string;
   country: string;
-  phone?: string | null;
-  isDefault?: boolean;
+  phone?: string;
 }
 
-export interface OrderItem {
-  id: string;
-  orderId?: string;
-  productId: string;
-  name: string;
-  image: string;
-  price: number;
-  quantity: number;
-  size?: string | null;
-  color?: string | null;
-}
-
-export interface Order {
-  id: string;
-  userId?: string;
-  items: OrderItem[];
-  subtotal: number;
-  shipping: number;
-  tax: number;
-  total: number;
-  status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  shippingAddress?: Address | null;
+export interface UserProfile {
+  id: ID;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  role?: "customer" | "admin";
+  phone?: string;
+  address?: Address;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface Review {
-  id: string;
-  productId: string;
-  userId?: string;
-  userName?: string;
-  rating: number;
-  title?: string;
-  body: string;
-  createdAt?: string;
+export interface OrderItem {
+  id: ID;
+  productId: ID;
+  name: string;
+  image?: string;
+  price: number;
+  quantity: number;
+  size?: string;
+  color?: string;
 }
 
-export interface ProductFilters {
-  query?: string;
-  category?: string;
-  collection?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  sort?: 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating';
-  inStock?: boolean;
+export interface Order {
+  id: ID;
+  userId: ID;
+  items: OrderItem[];
+  subtotal: number;
+  shipping: number;
+  tax?: number;
+  total: number;
+  currency?: string;
+  status: "pending" | "paid" | "processing" | "shipped" | "delivered" | "cancelled";
+  shippingAddress: Address;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ApiResponse<T> {
   data: T;
   message?: string;
-  error?: string;
+  success?: boolean;
 }
 
-export interface CartPayload {
-  productId: string;
+export interface ProductsResponse extends ApiResponse<Product[]> {}
+export interface ProductResponse extends ApiResponse<Product> {}
+export interface ReviewsResponse extends ApiResponse<Review[]> {}
+export interface CartResponse extends ApiResponse<CartItem[]> {}
+export interface OrdersResponse extends ApiResponse<Order[]> {}
+export interface UserResponse extends ApiResponse<UserProfile> {}
+
+export interface CreateReviewPayload {
+  productId: ID;
+  rating: number;
+  title?: string;
+  body: string;
+}
+
+export interface AddToCartPayload {
+  productId: ID;
+  quantity?: number;
+  size?: string;
+  color?: string;
+}
+
+export interface UpdateCartItemPayload {
   quantity?: number;
   size?: string;
   color?: string;
@@ -119,9 +134,8 @@ export interface CartPayload {
 
 export interface CheckoutPayload {
   items: CartItem[];
-  address: Address;
+  shippingAddress: Address;
   email: string;
-  phone?: string;
 }
 
 export interface AuthPayload {
