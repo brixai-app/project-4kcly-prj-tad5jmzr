@@ -5,23 +5,23 @@
 :root {
   --color-bg: #F9F7F6;
   --color-bg-rgb: 249, 247, 246;
-  --color-surface: #EEE8E2;
-  --color-surface-rgb: 238, 232, 226;
-  --color-surface-hover: #E3D9D0;
-  --color-surface-hover-rgb: 227, 217, 208;
-  --color-border: #C9BDB2;
-  --color-border-rgb: 201, 189, 178;
-  --color-text-primary: #2E2E2E;
-  --color-text-primary-rgb: 46, 46, 46;
-  --color-text-muted: #6E655E;
-  --color-text-muted-rgb: 110, 101, 94;
+  --color-surface: #EFE9E3;
+  --color-surface-rgb: 239, 233, 227;
+  --color-surface-hover: #E5DDD5;
+  --color-surface-hover-rgb: 229, 221, 213;
+  --color-border: #CFC4BA;
+  --color-border-rgb: 207, 196, 186;
+  --color-text-primary: #211E1D;
+  --color-text-primary-rgb: 33, 30, 29;
+  --color-text-muted: #665F5B;
+  --color-text-muted-rgb: 102, 95, 91;
   --color-accent: #8B0000;
   --color-accent-rgb: 139, 0, 0;
-  --color-accent-hover: #650000;
-  --color-accent-hover-rgb: 101, 0, 0;
+  --color-accent-hover: #680000;
+  --color-accent-hover-rgb: 104, 0, 0;
   --color-accent-text: #ffffff;
-  --radius-theme: 2px;
-  --font-heading: 'Playfair Display', sans-serif;
+  --radius-theme: 4px;
+  --font-heading: 'Bodoni Moda', sans-serif;
   --font-body: 'Lora', sans-serif;
 }
 

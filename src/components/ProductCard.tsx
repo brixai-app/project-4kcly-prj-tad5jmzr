@@ -1,115 +1,120 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Eye, ShoppingBag, Heart } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useCart } from '@/context/CartContext';
-import ProductDetailModal from '@/components/ProductDetailModal';
-import type { Product } from '@/types';
+import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { ArrowRight, Check, Eye, ShoppingBag, Star } from 'lucide-react';
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import type { Product } from "@/types";
+import { useCart } from "@/context/CartContext";
+import ProductDetailModal from "@/components/ProductDetailModal";
 
-export function ProductCard({ product }: { product?: Product }) {
+type ProductCardProps = {
+  product?: Product | null;
+  className?: string;
+};
+
+export function ProductCard({ product = null, className = "" }: ProductCardProps) {
   const { addItem } = useCart?.() ?? {};
   const [open, setOpen] = useState(false);
-  const [imgError, setImgError] = useState(false);
+  const [added, setAdded] = useState(false);
 
   const imageSrc = useMemo(() => {
-    const primary = product?.images?.[0]?.url ?? product?.image ?? '';
-    return primary || `https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=800&q=80 ?? product?.id ?? 'nddn')}/1200/1600`;
-  }, [product?.id, product?.image, product?.images, product?.slug]);
-
-  const currency = product?.currency ?? '₹';
-  const price = `${currency}${Number(product?.price ?? 0).toLocaleString('en-IN')}`;
-  const compareAt = product?.compareAtPrice ? `${currency}${Number(product?.compareAtPrice).toLocaleString('en-IN')}` : '';
-
-  const handleQuickAdd = () => {
-    if (!product || !addItem) return;
-    addItem({
-      id: crypto.randomUUID(),
-      productId: product.id,
-      product,
-      name: product.name ?? 'Untitled',
-      price: Number(product.price ?? 0),
-      quantity: 1,
-      image: product.images?.[0]?.url ?? product.image,
-    });
-  };
+    const fallback = `https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=800&q=80 ?? "product")}/1200/1600`;
+    return product?.image?.trim() ? product.image : fallback;
+  }, [product?.image, product?.slug]);
 
   if (!product) return null;
+
+  const handleQuickAdd = () => {
+    if (!product?.inStock) {
+      toast.error("This piece is currently unavailable.");
+      return;
+    }
+    addItem?.(product, 1);
+    setAdded(true);
+    toast.success("Added to cart.");
+    window.setTimeout(() => setAdded(false), 1400);
+  };
 
   return (
     <>
       <motion.article
-        initial={{ opacity: 0, y: 18 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-10% 0px' }}
-        transition={{ duration: 0.45, ease: 'easeOut' }}
-        className="group relative flex h-full flex-col overflow-hidden border border-[#C9BDB2] bg-white"
+        layout
+        whileHover={{ y: -4 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+        className={cn("group relative flex h-full flex-col overflow-hidden border border-[#CFC4BA] bg-white", className)}
       >
-        <div className="relative aspect-[3/4] overflow-hidden bg-[#EEE8E2]">
-          <Link to={`/shop/${product.slug ?? product.id}`} className="block h-full w-full">
+        <button type="button" onClick={() => setOpen(true)} className="block w-full text-left">
+          <div className="relative aspect-[3/4] overflow-hidden bg-[#EFE9E3]">
             <img
-              src={imgError ? `https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=800&q=80 ?? product.id ?? 'nddn-fallback')}/1200/1600` : imageSrc}
-              alt={product.images?.[0]?.alt ?? product.name ?? 'Product image'}
+              src={imageSrc}
+              alt={product?.name ?? "Product image"}
               crossOrigin="anonymous"
-              onError={() => setImgError(true)}
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
-          </Link>
+            <div className="absolute inset-x-0 top-0 flex items-start justify-between p-3">
+              <span className="min-w-0 max-w-[70%] truncate bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#211E1D]">
+                {product?.category?.name ?? "Collection"}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]",
+                  product?.inStock ? "border-[#CFC4BA] bg-white/85 text-[#211E1D]" : "border-[#8B0000] bg-[#8B0000] text-white"
+                )}
+              >
+                {product?.inStock ? "In stock" : "Sold out"}
+              </span>
+            </div>
+            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+              <span className="inline-flex items-center gap-2 bg-[#211E1D]/90 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white">
+                <Eye className="h-3.5 w-3.5" />
+                Quick view
+              </span>
+              <span className="inline-flex items-center gap-2 bg-[#8B0000] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-white">
+                <ArrowRight className="h-3.5 w-3.5" />
+                Explore
+              </span>
+            </div>
+          </div>
+        </button>
 
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="absolute right-3 top-3 inline-flex items-center gap-2 border border-[#C9BDB2] bg-[#F9F7F6]/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#2E2E2E] backdrop-blur-sm transition-colors hover:bg-white"
-          >
-            <Eye className="h-3.5 w-3.5" />
-            Quick View
-          </button>
-
-          <button
-            type="button"
-            onClick={handleQuickAdd}
-            className="absolute inset-x-3 bottom-3 inline-flex items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 hover:bg-[#650000]"
-          >
-            <ShoppingBag className="h-3.5 w-3.5" />
-            Quick Add
-          </button>
-        </div>
-
-        <div className="flex flex-1 flex-col gap-2 p-4">
+        <div className="flex flex-1 flex-col gap-3 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.22em] text-[#6E655E]">
-                {product.collection ?? product.category ?? 'Collection'}
+              <h3 className="truncate font-['Bodoni_Moda'] text-xl font-medium tracking-tight text-[#211E1D]">
+                {product?.name ?? "Untitled"}
+              </h3>
+              <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#665F5B]">
+                {product?.description ?? ""}
               </p>
-              <Link to={`/shop/${product.slug ?? product.id}`} className="block min-w-0">
-                <h3 className="truncate font-['Playfair_Display'] text-lg font-medium leading-tight text-[#2E2E2E]">
-                  {product.name ?? 'Untitled'}
-                </h3>
-              </Link>
             </div>
-            <button
-              type="button"
-              aria-label="Save to wishlist"
-              className="mt-0.5 inline-flex h-9 w-9 items-center justify-center border border-[#C9BDB2] text-[#2E2E2E] transition-colors hover:bg-[#F9F7F6]"
-            >
-              <Heart className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[#211E1D]">
+              <Star className="h-4 w-4 fill-[#8B0000] text-[#8B0000]" />
+              <span>{(product?.rating ?? 0).toFixed(1)}</span>
+            </div>
           </div>
 
           <div className="mt-auto flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#2E2E2E]">{price}</p>
-              {compareAt ? <p className="text-xs text-[#6E655E] line-through">{compareAt}</p> : null}
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#665F5B]">Price</p>
+              <p className="font-['Bodoni_Moda'] text-2xl font-semibold tracking-tight text-[#211E1D]">
+                {product?.currency ?? "₹"}
+                {product?.price?.toLocaleString?.() ?? "0"}
+              </p>
             </div>
             <button
               type="button"
               onClick={handleQuickAdd}
+              disabled={!product?.inStock}
               className={cn(
-                'inline-flex items-center gap-2 border border-[#C9BDB2] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#2E2E2E] transition-colors hover:bg-[#F9F7F6]',
-                !addItem && 'opacity-50'
+                "inline-flex items-center gap-2 border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] transition-colors",
+                product?.inStock
+                  ? "border-[#8B0000] bg-[#8B0000] text-white hover:bg-[#680000]"
+                  : "cursor-not-allowed border-[#CFC4BA] bg-[#EFE9E3] text-[#665F5B]"
               )}
             >
-              Add
+              {added ? <Check className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
+              {added ? "Added" : "Quick add"}
             </button>
           </div>
         </div>

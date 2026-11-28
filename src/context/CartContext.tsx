@@ -1,108 +1,80 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import type { CartItem, Product } from '@/types';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { CartItem, Product } from "@/types";
 
 type CartContextValue = {
   items: CartItem[];
-  isOpen: boolean;
+  isDrawerOpen: boolean;
   subtotal: number;
   itemCount: number;
-  openCart: () => void;
-  closeCart: () => void;
-  toggleCart: () => void;
+  openDrawer: () => void;
+  closeDrawer: () => void;
+  toggleDrawer: () => void;
+  addItem: (product: Product, quantity?: number, size?: string, color?: string) => void;
   addToCart: (product: Product, quantity?: number, size?: string, color?: string) => void;
+  removeItem: (productId: string, size?: string, color?: string) => void;
   removeFromCart: (productId: string, size?: string, color?: string) => void;
   updateQuantity: (productId: string, quantity: number, size?: string, color?: string) => void;
   clearCart: () => void;
-  setCartOpen: (open: boolean) => void;
 };
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
-const STORAGE_KEY = 'nddn-cart-v1';
+const STORAGE_KEY = "nddn-cart-v1";
 
-const safeNumber = (value: unknown, fallback = 0) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
-const lineKey = (productId: string, size?: string, color?: string) => `${productId}::${size ?? ''}::${color ?? ''}`;
+const safeParse = (value: string | null): CartItem[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as CartItem[];
+    return Array.isArray(parsed) ? parsed.filter((item) => !!item?.product?.id) : [];
+  } catch {
+    return [];
+  }
+};
+
+const sameVariant = (a: CartItem, productId: string, size?: string, color?: string) =>
+  a?.productId === productId && (a?.size ?? "") === (size ?? "") && (a?.color ?? "") === (color ?? "");
 
 export function CartProvider({ children }: { children?: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as CartItem[] | null;
-      if (Array.isArray(parsed)) {
-        setItems(
-          parsed
-            .filter((item) => item?.productId && item?.id)
-            .map((item) => ({
-              ...item,
-              quantity: Math.max(1, safeNumber(item?.quantity, 1)),
-              price: Math.max(0, safeNumber(item?.price, 0)),
-            })),
-        );
-      }
-    } catch {
-      setItems([]);
-    }
+    setItems(safeParse(window.localStorage.getItem(STORAGE_KEY)));
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    } catch {}
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const openCart = useCallback(() => setIsOpen(true), []);
-  const closeCart = useCallback(() => setIsOpen(false), []);
-  const toggleCart = useCallback(() => setIsOpen((prev) => !prev), []);
-  const setCartOpen = useCallback((open: boolean) => setIsOpen(open), []);
+  const openDrawer = useCallback(() => setIsDrawerOpen(true), []);
+  const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
+  const toggleDrawer = useCallback(() => setIsDrawerOpen((prev) => !prev), []);
 
-  const addToCart = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
+  const addItem = useCallback((product: Product, quantity = 1, size?: string, color?: string) => {
     if (!product?.id) return;
-    const qty = Math.max(1, Math.floor(quantity));
+    const safeQty = Math.max(1, Math.floor(quantity ?? 1));
     setItems((prev) => {
-      const key = lineKey(product.id, size, color);
-      const existing = prev.find((item) => lineKey(item.productId, item.size, item.color) === key);
-      const stockCap = product?.inStock === false ? 0 : Number.POSITIVE_INFINITY;
+      const existing = prev.find((item) => sameVariant(item, product.id, size, color));
       if (existing) {
-        return prev.map((item) => {
-          if (lineKey(item.productId, item.size, item.color) !== key) return item;
-          const nextQty = Math.min(stockCap, item.quantity + qty);
-          return { ...item, quantity: Number.isFinite(nextQty) ? nextQty : item.quantity };
-        });
+        const nextQty = Math.min((existing.quantity ?? 1) + safeQty, product?.inStock ? 99 : 1);
+        return prev.map((item) => (sameVariant(item, product.id, size, color) ? { ...item, quantity: nextQty } : item));
       }
-      if (stockCap <= 0) return prev;
-      return [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          productId: product.id,
-          product,
-          name: product?.name ?? 'Untitled product',
-          price: Math.max(0, safeNumber(product?.price, 0)),
-          quantity: Math.min(stockCap, qty),
-          image: product?.image ?? product?.images?.[0]?.url,
-          size,
-          color,
-        },
-      ];
+      return [...prev, { productId: product.id, product, quantity: Math.min(safeQty, product?.inStock ? 99 : 1), size, color }];
     });
-    setIsOpen(true);
+    setIsDrawerOpen(true);
   }, []);
 
-  const removeFromCart = useCallback((productId: string, size?: string, color?: string) => {
-    setItems((prev) => prev.filter((item) => lineKey(item.productId, item.size, item.color) !== lineKey(productId, size, color)));
+  const removeItem = useCallback((productId: string, size?: string, color?: string) => {
+    setItems((prev) => prev.filter((item) => !sameVariant(item, productId, size, color)));
   }, []);
 
   const updateQuantity = useCallback((productId: string, quantity: number, size?: string, color?: string) => {
-    const nextQty = Math.max(0, Math.floor(quantity));
+    const nextQty = Math.max(0, Math.floor(quantity ?? 0));
     setItems((prev) =>
       prev
         .map((item) => {
-          if (lineKey(item.productId, item.size, item.color) !== lineKey(productId, size, color)) return item;
-          const stockCap = item?.product?.inStock === false ? 0 : Number.POSITIVE_INFINITY;
-          return { ...item, quantity: Math.min(stockCap, nextQty) };
+          if (!sameVariant(item, productId, size, color)) return item;
+          const maxQty = item?.product?.inStock ? 99 : 1;
+          return { ...item, quantity: Math.min(nextQty, maxQty) };
         })
         .filter((item) => item.quantity > 0),
     );
@@ -110,25 +82,30 @@ export function CartProvider({ children }: { children?: React.ReactNode }) {
 
   const clearCart = useCallback(() => setItems([]), []);
 
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.price, 0) * safeNumber(item?.quantity, 0), 0), [items]);
-  const itemCount = useMemo(() => items.reduce((sum, item) => sum + safeNumber(item?.quantity, 0), 0), [items]);
+  const subtotal = useMemo(
+    () => items.reduce((sum, item) => sum + (item?.product?.price ?? 0) * (item?.quantity ?? 0), 0),
+    [items],
+  );
+
+  const itemCount = useMemo(() => items.reduce((sum, item) => sum + (item?.quantity ?? 0), 0), [items]);
 
   const value = useMemo<CartContextValue>(
     () => ({
       items,
-      isOpen,
+      isDrawerOpen,
       subtotal,
       itemCount,
-      openCart,
-      closeCart,
-      toggleCart,
-      addToCart,
-      removeFromCart,
+      openDrawer,
+      closeDrawer,
+      toggleDrawer,
+      addItem,
+      addToCart: addItem,
+      removeItem,
+      removeFromCart: removeItem,
       updateQuantity,
       clearCart,
-      setCartOpen,
     }),
-    [items, isOpen, subtotal, itemCount, openCart, closeCart, toggleCart, addToCart, removeFromCart, updateQuantity, clearCart, setCartOpen],
+    [items, isDrawerOpen, subtotal, itemCount, openDrawer, closeDrawer, toggleDrawer, addItem, removeItem, updateQuantity, clearCart],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -136,7 +113,7 @@ export function CartProvider({ children }: { children?: React.ReactNode }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within a CartProvider');
+  if (!context) throw new Error("useCart must be used within a CartProvider");
   return context;
 }
 

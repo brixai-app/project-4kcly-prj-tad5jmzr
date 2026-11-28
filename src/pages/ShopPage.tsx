@@ -1,233 +1,228 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { ChevronDown, Filter, Search, Sliders, X } from 'lucide-react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Product } from '@/types';
-import { cn } from '@/lib/utils';
-import ProductCard from '@/components/ProductCard';
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { ArrowRight, Filter, Search, Sliders, X } from 'lucide-react';
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import ProductCard from "@/components/ProductCard";
+import type { FilterState, Product, ProductsResponse } from "@/types";
 
 export function ShopPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
-  const [size, setSize] = useState('all');
-  const [color, setColor] = useState('all');
-  const [sortBy, setSortBy] = useState<'featured' | 'newest' | 'price-asc' | 'price-desc' | 'rating'>('featured');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const [filters, setFilters] = useState<FilterState>({
+    query: searchParams.get("q") ?? "",
+    category: searchParams.get("category") ?? "all",
+    minPrice: Number(searchParams.get("minPrice") ?? 0),
+    maxPrice: Number(searchParams.get("maxPrice") ?? 999999),
+    sortBy: (searchParams.get("sortBy") as FilterState["sortBy"]) ?? "featured",
+    sizes: [],
+    colors: [],
+  });
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     const load = async () => {
       try {
         setLoading(true);
-        const res = await fetch('/api/products');
-        const json = await res.json().catch(() => null);
-        const data = (json?.data ?? json ?? []) as Product[];
-        if (active) setProducts(Array.isArray(data) ? data : []);
-      } catch {
-        if (active) setProducts([]);
+        setError("");
+        const res = await fetch("/api/products", { signal: controller.signal });
+        if (!res.ok) throw new Error("Unable to load catalog.");
+        const raw = await res.json();
+        const payload = (raw?.data ?? raw) as ProductsResponse["data"] | { products?: Product[] } | Product[] | string;
+        const parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
+        const list = Array.isArray(parsed) ? parsed : Array.isArray((parsed as any)?.products) ? (parsed as any).products : Array.isArray((parsed as any)?.data) ? (parsed as any).data : [];
+        setProducts(
+          list.map((item: Product) => ({
+            ...item,
+            inStock: Boolean((item as any)?.inStock ?? Number((item as any)?.stock ?? 0) > 0),
+            category: {
+              ...(item?.category ?? { id: "all", name: "All", slug: "all" }),
+              name: item?.category?.name ?? "All",
+              slug: item?.category?.slug ?? "all",
+            },
+          }))
+        );
+      } catch (e) {
+        if ((e as Error)?.name !== "AbortError") setError((e as Error)?.message ?? "Something went wrong.");
       } finally {
-        if (active) setLoading(false);
+        setLoading(false);
       }
     };
     load();
-    return () => {
-      active = false;
-    };
+    return () => controller.abort();
   }, []);
 
-  const categories = useMemo(() => ['all', ...new Set(products.map((p) => (p.category ?? '').trim()).filter(Boolean))], [products]);
-  const sizes = useMemo(() => ['all', ...new Set(products.flatMap((p) => p.sizes ?? []).filter(Boolean))], [products]);
-  const colors = useMemo(() => ['all', ...new Set(products.map((p) => (p.color ?? '').trim()).filter(Boolean))], [products]);
+  const categories = useMemo(() => {
+    const map = new Map<string, string>();
+    products.forEach((p) => {
+      const slug = (p?.category?.slug ?? "all").toLowerCase();
+      const name = p?.category?.name ?? "All";
+      if (!map.has(slug)) map.set(slug, name);
+    });
+    return [{ slug: "all", name: "All" }, ...Array.from(map.entries()).map(([slug, name]) => ({ slug, name }))];
+  }, [products]);
+
+  const sizes = useMemo(() => Array.from(new Set(products.flatMap((p) => p?.sizes ?? []))).filter(Boolean), [products]);
+  const colors = useMemo(() => Array.from(new Set(products.flatMap((p) => p?.colors ?? []))).filter(Boolean), [products]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = filters.query.trim().toLowerCase();
     const list = products.filter((p) => {
-      const matchesQuery =
-        !q ||
-        [p.name, p.description, p.category, p.collection, p.material, p.color].some((v) => (v ?? '').toLowerCase().includes(q));
-      const matchesCategory = category === 'all' || (p.category ?? '').toLowerCase() === category.toLowerCase();
-      const matchesSize = size === 'all' || (p.sizes ?? []).some((s) => s.toLowerCase() === size.toLowerCase());
-      const matchesColor = color === 'all' || (p.color ?? '').toLowerCase() === color.toLowerCase();
-      return matchesQuery && matchesCategory && matchesSize && matchesColor;
+      const categoryMatch = filters.category === "all" || (p?.category?.slug ?? "").toLowerCase() === filters.category.toLowerCase() || (p?.category?.name ?? "").toLowerCase() === filters.category.toLowerCase();
+      const queryMatch = !q || [p?.name, p?.description, p?.category?.name].some((v) => (v ?? "").toLowerCase().includes(q));
+      const priceMatch = (p?.price ?? 0) >= filters.minPrice && (p?.price ?? 0) <= filters.maxPrice;
+      const sizeMatch = filters.sizes.length === 0 || filters.sizes.some((s) => (p?.sizes ?? []).includes(s));
+      const colorMatch = filters.colors.length === 0 || filters.colors.some((c) => (p?.colors ?? []).includes(c));
+      return categoryMatch && queryMatch && priceMatch && sizeMatch && colorMatch;
     });
-    return [...list].sort((a, b) => {
-      if (sortBy === 'price-asc') return (a.price ?? 0) - (b.price ?? 0);
-      if (sortBy === 'price-desc') return (b.price ?? 0) - (a.price ?? 0);
-      if (sortBy === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-      if (sortBy === 'newest') return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
-      return Number(b.featured ?? false) - Number(a.featured ?? false) || new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+    return list.sort((a, b) => {
+      if (filters.sortBy === "price-asc") return (a?.price ?? 0) - (b?.price ?? 0);
+      if (filters.sortBy === "price-desc") return (b?.price ?? 0) - (a?.price ?? 0);
+      if (filters.sortBy === "newest") return Number(b?.featured ?? false) - Number(a?.featured ?? false);
+      return Number(b?.featured ?? false) - Number(a?.featured ?? false);
     });
-  }, [products, query, category, size, color, sortBy]);
+  }, [products, filters]);
 
-  const clearFilters = () => {
-    setQuery('');
-    setCategory('all');
-    setSize('all');
-    setColor('all');
-    setSortBy('featured');
-  };
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.query) params.set("q", filters.query);
+    if (filters.category !== "all") params.set("category", filters.category);
+    if (filters.minPrice > 0) params.set("minPrice", String(filters.minPrice));
+    if (filters.maxPrice < 999999) params.set("maxPrice", String(filters.maxPrice));
+    if (filters.sortBy !== "featured") params.set("sortBy", filters.sortBy);
+    setSearchParams(params, { replace: true });
+  }, [filters, setSearchParams]);
+
+  const toggleMulti = (key: "sizes" | "colors", value: string) =>
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value) ? prev[key].filter((v) => v !== value) : [...prev[key], value],
+    }));
 
   return (
-    <main className="bg-[#F9F7F6] text-[#2E2E2E]">
-      <section className="border-b border-[#C9BDB2] bg-[#EEE8E2]">
-        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6E655E]">Catalog</p>
-              <h1 className="mt-3 font-['Playfair_Display'] text-4xl font-light tracking-tight sm:text-5xl lg:text-6xl">
-                Shop the NDDN edit
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-7 text-[#6E655E] sm:text-base">
-                A live collection of refined silhouettes, tactile tailoring, and seasonal statements curated for a fine-paper canvas.
-              </p>
+    <main className="bg-[#F9F7F6] text-[#211E1D]">
+      <section className="border-b border-[#CFC4BA] bg-[#EFE9E3]">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#665F5B]">Catalog</p>
+              <h1 className="mt-2 font-['Bodoni_Moda'] text-4xl font-light tracking-tight sm:text-5xl">NDDN Store</h1>
             </div>
-            <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.25em] text-[#6E655E]">
-              <span>{filtered.length} results</span>
-              <span className="h-1 w-1 rounded-full bg-[#8B0000]" />
-              <span>{loading ? 'Updating' : 'Live inventory'}</span>
+            <div className="flex items-center gap-3">
+              <Link to="/" className="inline-flex items-center gap-2 border border-[#CFC4BA] px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] transition hover:bg-white">
+                Home <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="min-w-0 border border-[#C9BDB2] bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Filter className="h-4 w-4 shrink-0" />
+          <aside className="min-w-0 border border-[#CFC4BA] bg-white p-4 lg:sticky lg:top-24 lg:h-fit">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4" />
                 <h2 className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.25em]">Filters</h2>
               </div>
-              <button onClick={clearFilters} className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B0000]">
+              <button onClick={() => setFiltersOpen((v) => !v)} className="lg:hidden">
+                {filtersOpen ? <X className="h-4 w-4" /> : <Sliders className="h-4 w-4" />}
+              </button>
+            </div>
+
+            <AnimatePresence>
+              {(filtersOpen || typeof window !== "undefined") && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="mt-4 flex flex-col gap-5">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#665F5B]">Search</span>
+                    <div className="flex items-center gap-2 border border-[#CFC4BA] bg-[#F9F7F6] px-3 py-2">
+                      <Search className="h-4 w-4 shrink-0 text-[#665F5B]" />
+                      <input value={filters.query} onChange={(e) => setFilters((p) => ({ ...p, query: e.target.value }))} placeholder="Search products" className="w-full bg-transparent text-sm outline-none placeholder:text-[#665F5B]" />
+                    </div>
+                  </label>
+
+                  <div className="flex flex-col gap-2.5">
+                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#665F5B]">Category</span>
+                    <div className="flex flex-col gap-2.5">
+                      {categories.map((c) => (
+                        <button key={c.slug} onClick={() => setFilters((p) => ({ ...p, category: c.slug }))} className={cn("min-w-0 truncate border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.2em] transition", filters.category === c.slug ? "border-[#8B0000] bg-[#8B0000] text-white" : "border-[#CFC4BA] bg-white text-[#211E1D] hover:bg-[#F9F7F6]")}>
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#665F5B]">Sizes</span>
+                    <div className="flex flex-wrap gap-2">
+                      {sizes.map((size) => (
+                        <button key={size} onClick={() => toggleMulti("sizes", size)} className={cn("border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition", filters.sizes.includes(size) ? "border-[#8B0000] bg-[#8B0000] text-white" : "border-[#CFC4BA] bg-white")}>
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#665F5B]">Colors</span>
+                    <div className="flex flex-wrap gap-2">
+                      {colors.map((color) => (
+                        <button key={color} onClick={() => toggleMulti("colors", color)} className={cn("border px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition", filters.colors.includes(color) ? "border-[#8B0000] bg-[#8B0000] text-white" : "border-[#CFC4BA] bg-white")}>
+                          {color}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#665F5B]">Sort</span>
+                    <select value={filters.sortBy} onChange={(e) => setFilters((p) => ({ ...p, sortBy: e.target.value as FilterState["sortBy"] }))} className="border border-[#CFC4BA] bg-white px-3 py-2 text-sm outline-none">
+                      <option value="featured">Featured</option>
+                      <option value="newest">Newest</option>
+                      <option value="price-asc">Price: Low to High</option>
+                      <option value="price-desc">Price: High to Low</option>
+                    </select>
+                  </label>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </aside>
+
+          <section className="min-w-0">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-[#665F5B]">{loading ? "Loading collection..." : `${filtered.length} pieces`}</p>
+              <button onClick={() => setFilters({ query: "", category: "all", minPrice: 0, maxPrice: 999999, sortBy: "featured", sizes: [], colors: [] })} className="text-xs font-semibold uppercase tracking-[0.25em] text-[#8B0000]">
                 Reset
               </button>
             </div>
 
-            <div className="mt-5 flex flex-col gap-2.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Search</label>
-              <div className="flex items-center gap-2 border border-[#C9BDB2] bg-[#F9F7F6] px-3 py-2">
-                <Search className="h-4 w-4 shrink-0 text-[#6E655E]" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search products"
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-[#6E655E]"
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-2.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Category</label>
-              <div className="flex flex-wrap gap-2">
-                {categories.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setCategory(item)}
-                    className={cn(
-                      'min-w-0 border px-3 py-2 text-left text-xs font-semibold uppercase tracking-[0.18em] transition',
-                      category === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
-                    )}
-                  >
-                    <span className="block max-w-full truncate">{item === 'all' ? 'All' : item}</span>
-                  </button>
+            {error ? (
+              <div className="border border-[#CFC4BA] bg-white p-6 text-sm text-[#665F5B]">{error}</div>
+            ) : loading ? (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="aspect-[3/4] animate-pulse border border-[#CFC4BA] bg-white" />
                 ))}
               </div>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-2.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Size</label>
-              <div className="flex flex-wrap gap-2">
-                {sizes.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setSize(item)}
-                    className={cn(
-                      'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition',
-                      size === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
-                    )}
-                  >
-                    {item === 'all' ? 'All' : item}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-2.5">
-              <label className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6E655E]">Color</label>
-              <div className="flex flex-wrap gap-2">
-                {colors.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setColor(item)}
-                    className={cn(
-                      'border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition',
-                      color === item ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] bg-white text-[#2E2E2E]'
-                    )}
-                  >
-                    {item === 'all' ? 'All' : item}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          <section className="min-w-0">
-            <div className="mb-4 flex flex-col gap-3 border-b border-[#C9BDB2] pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-[#6E655E]">{filtered.length} pieces curated for your current selection</p>
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger asChild>
-                  <button className="inline-flex items-center gap-2 border border-[#C9BDB2] bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em]">
-                    Sort
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.Content className="z-50 min-w-44 border border-[#C9BDB2] bg-white p-1 shadow-lg">
-                    {[
-                      ['featured', 'Featured'],
-                      ['newest', 'Newest'],
-                      ['price-asc', 'Price: Low to High'],
-                      ['price-desc', 'Price: High to Low'],
-                      ['rating', 'Top Rated'],
-                    ].map(([value, label]) => (
-                      <DropdownMenu.Item
-                        key={value}
-                        onSelect={() => setSortBy(value as typeof sortBy)}
-                        className={cn(
-                          'cursor-pointer px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] outline-none hover:bg-[#EEE8E2]',
-                          sortBy === value && 'bg-[#EEE8E2]'
-                        )}
-                      >
-                        {label}
-                      </DropdownMenu.Item>
-                    ))}
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
-            </div>
-
-            {filtered.length === 0 ? (
-              <div className="flex min-h-[40vh] flex-col items-center justify-center border border-dashed border-[#C9BDB2] bg-white px-6 py-16 text-center">
-                <X className="h-8 w-8 text-[#8B0000]" />
-                <h3 className="mt-4 font-['Playfair_Display'] text-2xl font-light">No pieces match your edit</h3>
-                <p className="mt-2 max-w-md text-sm leading-7 text-[#6E655E]">Try a broader search or clear the filters to reveal the full collection.</p>
-                <button onClick={clearFilters} className="mt-6 border border-[#8B0000] bg-[#8B0000] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white">
-                  Clear filters
-                </button>
+            ) : filtered.length === 0 ? (
+              <div className="border border-[#CFC4BA] bg-white p-8">
+                <p className="text-lg font-medium">No pieces match your filters.</p>
+                <p className="mt-2 text-sm text-[#665F5B]">Try a broader search or clear the current selection.</p>
               </div>
             ) : (
-              <motion.div layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {filtered.map((product) => (
-                  <motion.div key={product.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-                    <ProductCard product={product} />
-                  </motion.div>
+                  <ProductCard key={product?.id ?? product?.slug} product={product} />
                 ))}
-              </motion.div>
+              </div>
             )}
           </section>
         </div>
-      </section>
+      </div>
     </main>
   );
 }

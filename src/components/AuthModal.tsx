@@ -1,265 +1,153 @@
-import React from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Check, Eye, EyeOff, Lock, Mail, X } from 'lucide-react';
-import { toast } from 'sonner';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import React, { useEffect, useMemo, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useLocation, useNavigate } from "react-router-dom";
+import { X, Mail, Lock, User, CheckCircle2 } from 'lucide-react';
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-type Mode = 'signin' | 'signup';
-
-export function AuthModal({
-  open = false,
-  onOpenChange = () => {},
-  defaultMode = 'signin',
-}: {
+type AuthModalProps = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  defaultMode?: Mode;
-}) {
-  const [mode, setMode] = useState<Mode>(defaultMode);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
+  defaultTab?: "signin" | "signup";
+};
+
+type FormState = {
+  email: string;
+  password: string;
+  name: string;
+};
+
+const initialForm: FormState = { email: "", password: "", name: "" };
+
+export function AuthModal({ open = false, onOpenChange = () => {}, defaultTab = "signin" }: AuthModalProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [tab, setTab] = useState<"signin" | "signup">(defaultTab);
+  const [form, setForm] = useState<FormState>(initialForm);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Partial<FormState>>({});
 
-  useEffect(() => setMode(defaultMode), [defaultMode]);
   useEffect(() => {
-    if (!open) {
-      setError('');
-      setPending(false);
-      setShowPassword(false);
+    if (open) setTab(defaultTab);
+  }, [defaultTab, open]);
+
+  useEffect(() => {
+    const path = location?.pathname ?? "";
+    if (path === "/auth" || path === "/login") onOpenChange(true);
+  }, [location?.pathname, onOpenChange]);
+
+  const title = useMemo(() => (tab === "signin" ? "Sign in" : "Create account"), [tab]);
+
+  const validate = () => {
+    const next: Partial<FormState> = {};
+    if (!form.email?.trim() || !/^\S+@\S+\.\S+$/.test(form.email)) next.email = "Enter a valid email.";
+    if (!form.password?.trim() || form.password.length < 8) next.password = "Use at least 8 characters.";
+    if (tab === "signup" && !form.name?.trim()) next.name = "Enter your name.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) {
+      toast.error("Please review the highlighted fields.");
+      return;
     }
-  }, [open]);
-
-  const passwordChecks = useMemo(() => {
-    const v = password ?? '';
-    return {
-      length: v.length >= 8,
-      upper: /[A-Z]/.test(v),
-      lower: /[a-z]/.test(v),
-      number: /\d/.test(v),
-      special: /[^A-Za-z0-9]/.test(v),
-    };
-  }, [password]);
-
-  const emailValid = /^\S+@\S+\.\S+$/.test(email.trim());
-  const passwordValid = Object.values(passwordChecks).every(Boolean);
-  const canSubmit = emailValid && passwordValid && (mode === 'signin' || (name.trim().length ?? 0) >= 2);
-
-  const submit = async () => {
-    if (!canSubmit || pending) return;
-    setPending(true);
-    setError('');
+    setLoading(true);
     try {
-      const endpoint = mode === 'signin' ? '/api/auth/sign-in' : '/api/auth/sign-up';
-      const payload = { email: email.trim(), password, name: name.trim() || undefined };
+      const endpoint = tab === "signin" ? "/api/auth/sign-in" : "/api/auth/sign-up";
+      const payload = tab === "signin" ? { email: form.email, password: form.password } : { email: form.email, password: form.password, name: form.name };
       const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? data?.message ?? 'Authentication failed');
-      toast.success(mode === 'signin' ? 'Signed in successfully' : 'Account created successfully');
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message ?? "Authentication failed.");
+      toast.success(tab === "signin" ? "Welcome back." : "Account created.");
+      setForm(initialForm);
       onOpenChange(false);
-      if (location?.pathname?.includes('/checkout')) navigate('/checkout');
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Authentication failed';
-      setError(message);
-      toast.error(message);
+      if (location?.pathname === "/auth" || location?.pathname === "/login") navigate("/");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
-      setPending(false);
+      setLoading(false);
     }
   };
 
+  const update = (key: keyof FormState, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <AnimatePresence>
-        {open ? (
-          <Dialog.Portal forceMount>
-            <Dialog.Overlay asChild>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
-              />
-            </Dialog.Overlay>
-            <Dialog.Content asChild>
-              <motion.div
-                initial={{ opacity: 0, x: 40 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 40 }}
-                transition={{ duration: 0.28, ease: 'easeOut' }}
-                className="fixed right-0 top-0 z-50 h-full w-full max-w-md border-l border-[#C9BDB2] bg-[#F9F7F6] shadow-2xl outline-none"
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 border border-[#CFC4BA] bg-[#F9F7F6] p-5 text-[#211E1D] shadow-2xl outline-none">
+          <div className="flex items-start justify-between gap-4 border-b border-[#CFC4BA] pb-4">
+            <div className="min-w-0">
+              <Dialog.Title className="font-['Bodoni_Moda'] text-3xl font-light tracking-tight">{title}</Dialog.Title>
+              <Dialog.Description className="mt-1 text-sm text-[#665F5B]">
+                Access your orders, saved items, and checkout details.
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <button type="button" className="inline-flex h-9 w-9 items-center justify-center border border-[#CFC4BA] text-[#211E1D] transition-colors hover:bg-[#EFE9E3]" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </Dialog.Close>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 border border-[#CFC4BA] p-1">
+            {(["signin", "signup"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setTab(item)}
+                className={cn(
+                  "px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] transition-colors",
+                  tab === item ? "bg-[#8B0000] text-white" : "bg-transparent text-[#665F5B] hover:bg-[#EFE9E3]"
+                )}
               >
-                <div className="flex h-full flex-col">
-                  <div className="flex items-start justify-between border-b border-[#C9BDB2] px-6 py-5">
-                    <div className="min-w-0">
-                      <Dialog.Title className="font-['Playfair_Display'] text-2xl font-light tracking-tight text-[#2E2E2E]">
-                        Access NDDN
-                      </Dialog.Title>
-                      <Dialog.Description className="mt-1 text-xs uppercase tracking-[0.24em] text-[#6E655E]">
-                        Sign in or create an account
-                      </Dialog.Description>
-                    </div>
-                    <Dialog.Close asChild>
-                      <button
-                        type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center border border-[#C9BDB2] text-[#2E2E2E] transition-colors hover:bg-[#EEE8E2]"
-                        aria-label="Close"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </Dialog.Close>
-                  </div>
+                {item === "signin" ? "Sign In" : "Sign Up"}
+              </button>
+            ))}
+          </div>
 
-                  <div className="flex gap-2 border-b border-[#C9BDB2] px-6 py-4">
-                    {(['signin', 'signup'] as Mode[]).map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => setMode(item)}
-                        className={cn(
-                          'min-w-0 flex-1 border px-3 py-2 text-xs uppercase tracking-[0.22em] transition-colors',
-                          mode === item
-                            ? 'border-[#8B0000] bg-[#8B0000] text-white'
-                            : 'border-[#C9BDB2] text-[#2E2E2E] hover:bg-[#EEE8E2]'
-                        )}
-                      >
-                        {item === 'signin' ? 'Sign In' : 'Sign Up'}
-                      </button>
-                    ))}
-                  </div>
+          <form onSubmit={submit} className="mt-5 space-y-4">
+            {tab === "signup" && (
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#665F5B]">
+                  <User className="h-4 w-4" /> Name
+                </span>
+                <input value={form.name} onChange={(e) => update("name", e.target.value)} className="w-full border border-[#CFC4BA] bg-white px-3 py-3 text-sm outline-none transition-colors placeholder:text-[#665F5B]/60 focus:border-[#8B0000]" placeholder="Your name" />
+                {errors.name ? <p className="mt-1 text-xs text-[#8B0000]">{errors.name}</p> : null}
+              </label>
+            )}
 
-                  <div className="flex-1 overflow-y-auto px-6 py-6">
-                    <div className="space-y-4">
-                      {mode === 'signup' && (
-                        <Field
-                          label="Full name"
-                          value={name}
-                          onChange={setName}
-                          placeholder="Your name"
-                          icon={<Check className="h-4 w-4" />}
-                        />
-                      )}
-                      <Field
-                        label="Email"
-                        value={email}
-                        onChange={setEmail}
-                        placeholder="name@example.com"
-                        icon={<Mail className="h-4 w-4" />}
-                        type="email"
-                        valid={emailValid || email.length === 0 ? undefined : false}
-                      />
-                      <Field
-                        label="Password"
-                        value={password}
-                        onChange={setPassword}
-                        placeholder="Minimum 8 characters"
-                        icon={<Lock className="h-4 w-4" />}
-                        type={showPassword ? 'text' : 'password'}
-                        action={
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword((v) => !v)}
-                            className="text-[#6E655E] transition-colors hover:text-[#2E2E2E]"
-                            aria-label={showPassword ? 'Hide password' : 'Show password'}
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        }
-                        valid={password.length === 0 || passwordValid ? undefined : false}
-                      />
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#665F5B]">
+                <Mail className="h-4 w-4" /> Email
+              </span>
+              <input value={form.email} onChange={(e) => update("email", e.target.value)} className="w-full border border-[#CFC4BA] bg-white px-3 py-3 text-sm outline-none transition-colors placeholder:text-[#665F5B]/60 focus:border-[#8B0000]" placeholder="you@example.com" />
+              {errors.email ? <p className="mt-1 text-xs text-[#8B0000]">{errors.email}</p> : null}
+            </label>
 
-                      <div className="border border-[#C9BDB2] bg-white p-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-[#6E655E]">Password strength</p>
-                        <ul className="mt-3 space-y-2 text-sm text-[#2E2E2E]">
-                          {[
-                            ['At least 8 characters', passwordChecks.length],
-                            ['One uppercase letter', passwordChecks.upper],
-                            ['One lowercase letter', passwordChecks.lower],
-                            ['One number', passwordChecks.number],
-                            ['One special character', passwordChecks.special],
-                          ].map(([label, ok]) => (
-                            <li key={label as string} className="flex items-center gap-2">
-                              <span className={cn('inline-flex h-4 w-4 items-center justify-center border', ok ? 'border-[#8B0000] bg-[#8B0000] text-white' : 'border-[#C9BDB2] text-transparent')}>
-                                <Check className="h-3 w-3" />
-                              </span>
-                              <span>{label as string}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+            <label className="block">
+              <span className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#665F5B]">
+                <Lock className="h-4 w-4" /> Password
+              </span>
+              <input type="password" value={form.password} onChange={(e) => update("password", e.target.value)} className="w-full border border-[#CFC4BA] bg-white px-3 py-3 text-sm outline-none transition-colors placeholder:text-[#665F5B]/60 focus:border-[#8B0000]" placeholder="At least 8 characters" />
+              {errors.password ? <p className="mt-1 text-xs text-[#8B0000]">{errors.password}</p> : null}
+            </label>
 
-                      {error ? <p className="text-sm text-[#8B0000]">{error}</p> : null}
-
-                      <button
-                        type="button"
-                        onClick={submit}
-                        disabled={!canSubmit || pending}
-                        className="inline-flex w-full items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-4 py-3 text-xs uppercase tracking-[0.24em] text-white transition-colors hover:bg-[#650000] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {pending ? 'Please wait' : mode === 'signin' ? 'Sign In' : 'Create Account'}
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-
-                      <p className="text-sm leading-6 text-[#6E655E]">
-                        By continuing, you agree to the boutique terms and privacy policy.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        ) : null}
-      </AnimatePresence>
+            <button type="submit" disabled={loading} className="inline-flex w-full items-center justify-center gap-2 bg-[#8B0000] px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-white transition-colors hover:bg-[#680000] disabled:cursor-not-allowed disabled:opacity-70">
+              {loading ? <CheckCircle2 className="h-4 w-4 animate-pulse" /> : null}
+              {loading ? "Please wait" : tab === "signin" ? "Sign In" : "Create Account"}
+            </button>
+          </form>
+        </Dialog.Content>
+      </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-function Field({
-  label = '',
-  value = '',
-  onChange = () => {},
-  placeholder = '',
-  icon,
-  action,
-  type = 'text',
-  valid,
-}: {
-  label?: string;
-  value?: string;
-  onChange?: (v: string) => void;
-  placeholder?: string;
-  icon?: React.ReactNode;
-  action?: React.ReactNode;
-  type?: string;
-  valid?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-xs uppercase tracking-[0.22em] text-[#6E655E]">{label}</span>
-      <div className={cn('flex items-center gap-3 border bg-white px-3 py-3', valid === false ? 'border-[#8B0000]' : 'border-[#C9BDB2]')}>
-        <span className="text-[#6E655E]">{icon}</span>
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="min-w-0 flex-1 bg-transparent text-sm text-[#2E2E2E] outline-none placeholder:text-[#6E655E]/70"
-        />
-        {action}
-      </div>
-    </label>
   );
 }
 

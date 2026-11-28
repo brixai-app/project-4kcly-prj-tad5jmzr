@@ -1,179 +1,120 @@
-export type ID = string;
-
-export interface ProductImage {
-  url: string;
-  alt?: string;
-  width?: number;
-  height?: number;
-}
-
-export interface Product {
-  id: ID;
+export type Category = {
+  id: string;
   name: string;
-  slug?: string;
-  description?: string;
+  slug: string;
+};
+
+export type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
   price: number;
-  compareAtPrice?: number | null;
-  currency?: string;
-  category?: string;
-  collection?: string;
-  material?: string;
-  color?: string;
+  currency: string;
+  category: Category;
+  image: string;
+  gallery?: string[];
   sizes?: string[];
-  images?: ProductImage[];
-  image?: string;
+  colors?: string[];
   featured?: boolean;
   inStock?: boolean;
   rating?: number;
   reviewCount?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
+};
 
-export interface Review {
-  id: ID;
-  productId: ID;
-  userId?: ID;
-  userName?: string;
+export type Review = {
+  id: string;
+  productId: string;
+  author: string;
   rating: number;
   title?: string;
-  body?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+  body: string;
+  createdAt: string;
+};
 
-export interface CartItem {
-  id: ID;
-  productId: ID;
-  product?: Product;
+export type CartItem = {
+  productId: string;
+  product: Product;
+  quantity: number;
+  size?: string;
+  color?: string;
+};
+
+export type OrderItem = {
+  productId: string;
   name: string;
   price: number;
   quantity: number;
-  image?: string;
   size?: string;
   color?: string;
-}
-
-export interface OrderItem {
-  productId: ID;
-  name: string;
-  price: number;
-  quantity: number;
   image?: string;
-  size?: string;
-  color?: string;
-}
+};
 
-export interface Order {
-  id: ID;
-  userId?: ID;
+export type Order = {
+  id: string;
+  userId?: string;
+  email: string;
   items: OrderItem[];
   subtotal: number;
-  shipping?: number;
-  tax?: number;
+  shipping: number;
   total: number;
-  status?: "pending" | "paid" | "processing" | "shipped" | "delivered" | "cancelled";
-  paymentStatus?: "unpaid" | "authorized" | "paid" | "refunded";
-  shippingAddress?: Address;
-  billingAddress?: Address;
-  createdAt?: string;
-  updatedAt?: string;
-}
+  status: "pending" | "paid" | "fulfilled" | "cancelled";
+  createdAt: string;
+};
 
-export interface Address {
-  name?: string;
-  line1?: string;
-  line2?: string;
-  city?: string;
-  state?: string;
-  postalCode?: string;
-  country?: string;
-  phone?: string;
-}
+export type FilterState = {
+  query: string;
+  category: string;
+  minPrice: number;
+  maxPrice: number;
+  sortBy: "featured" | "newest" | "price-asc" | "price-desc";
+  sizes: string[];
+  colors: string[];
+};
 
-export interface UserProfile {
-  id: ID;
-  name?: string;
-  email?: string;
-  avatarUrl?: string;
-  role?: "customer" | "admin" | "editor";
-  phone?: string;
-  bio?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface FilterState {
-  query?: string;
-  category?: string;
-  collection?: string;
-  color?: string;
-  size?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  sortBy?: "featured" | "newest" | "price-asc" | "price-desc" | "rating";
-}
-
-export interface CheckoutAddressPayload {
-  name?: string;
-  line1: string;
-  line2?: string;
+export type CheckoutForm = {
+  fullName: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string;
   city: string;
-  state?: string;
+  state: string;
   postalCode: string;
   country: string;
-  phone?: string;
-}
+  paymentMethod: "card" | "cod";
+};
 
-export interface CheckoutPayload {
-  items: Array<{
-    productId: ID;
-    quantity: number;
-    size?: string;
-    color?: string;
-  }>;
-  shippingAddress: CheckoutAddressPayload;
-  billingAddress?: CheckoutAddressPayload;
-  email: string;
-  notes?: string;
-  paymentMethod?: "card" | "cod" | "upi";
-}
-
-export interface ApiResponse<T> {
+export type ApiResponse<T> = {
   data: T;
   message?: string;
-  error?: string;
-}
+};
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  hasMore: boolean;
-}
+export type ProductsResponse = ApiResponse<Product[]>;
+export type ProductResponse = ApiResponse<Product>;
+export type ReviewsResponse = ApiResponse<Review[]>;
+export type OrdersResponse = ApiResponse<Order[]>;
+export type OrderResponse = ApiResponse<Order>;
 
-export interface AuthPayload {
+export type CreateReviewPayload = {
+  productId: string;
+  author: string;
+  rating: number;
+  title?: string;
+  body: string;
+};
+
+export type CreateOrderPayload = {
+  email: string;
+  items: OrderItem[];
+  shippingAddress: CheckoutForm;
+  paymentMethod: CheckoutForm["paymentMethod"];
+};
+
+export type AuthPayload = {
   email: string;
   password: string;
   name?: string;
-}
+};
 
-export interface SessionUser {
-  id: ID;
-  name?: string;
-  email?: string;
-  image?: string;
-  role?: "customer" | "admin" | "editor";
-}
-
-export interface CatalogQuery {
-  search?: string;
-  category?: string;
-  collection?: string;
-  sort?: string;
-  page?: number;
-  pageSize?: number;
-}
-
-export default Product;
+export default {};

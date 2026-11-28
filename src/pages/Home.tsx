@@ -1,208 +1,227 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowRight, Sparkles, Leaf, Shirt, Watch, ShoppingBag, Circle as Icon } from 'lucide-react';
-import ProductCard from '@/components/ProductCard';
-import type { Product } from '@/types';
-import { cn } from '@/lib/utils';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
+import { ArrowRight, ChevronRight, Sparkles, Star } from 'lucide-react';
+import { toast } from "sonner";
+import ProductCard from "@/components/ProductCard";
+import type { Product } from "@/types";
 
-const heroImage = 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85';
-const atelierImage = 'https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1400&q=85';
-const lookbookImages = [
-  'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1544441893-675973e31985?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1560769629-975ec94e6a86?auto=format&fit=crop&w=800&q=80',
+const heroSlides = [
+  {
+    image: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=1400&q=85",
+    title: "Tailored light, sculpted in motion.",
+    caption: "A quiet edit of modern occasionwear and elevated essentials.",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=1400&q=85",
+    title: "Evening silhouettes with a disciplined edge.",
+    caption: "Sharp lines, warm stone tones, and deep-crimson accents.",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=1200&q=80",
+    title: "The new season, rendered as an editorial study.",
+    caption: "Verified photography, restrained composition, refined commerce.",
+  },
 ];
 
 const categories = [
-  { label: 'Tailoring', icon: Shirt },
-  { label: 'Accessories', icon: Watch },
-  { label: 'Essentials', icon: Leaf },
-  { label: 'New In', icon: Sparkles },
-  { label: 'Bags', icon: ShoppingBag },
+  { name: "Outerwear", slug: "outerwear" },
+  { name: "Dresses", slug: "dresses" },
+  { name: "Tailoring", slug: "tailoring" },
+  { name: "Accessories", slug: "accessories" },
 ];
 
 export function Home() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeSlide, setActiveSlide] = useState(0);
 
   useEffect(() => {
-    let active = true;
-    const load = async () => {
+    let mounted = true;
+    const loadProducts = async () => {
       try {
-        const res = await fetch('/api/products');
-        const json = await res.json().catch(() => ({}));
-        const data = Array.isArray(json?.data) ? json.data : Array.isArray(json) ? json : [];
-        if (active) setProducts(data);
+        const res = await fetch("/api/products");
+        const json = (await res.json()) as { data?: Product[]; message?: string };
+        if (!mounted) return;
+        setProducts(Array.isArray(json?.data) ? json.data : []);
       } catch {
-        if (active) setProducts([]);
-      } finally {
-        if (active) setLoading(false);
+        if (!mounted) return;
+        setProducts([]);
+        toast.error("Unable to load featured collection.");
       }
     };
-    load();
+    loadProducts();
     return () => {
-      active = false;
+      mounted = false;
     };
   }, []);
 
-  const trending = useMemo(() => products.slice(0, 6), [products]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveSlide((current) => (current + 1) % heroSlides.length);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const featured = useMemo(() => products.filter((product) => product?.featured).slice(0, 6), [products]);
 
   return (
-    <main className="bg-[#F9F7F6] text-[#2E2E2E]">
-      <section className="relative min-h-[92vh] overflow-hidden">
-        <img
-          src={heroImage}
-          alt="Editorial fashion lookbook"
-          crossOrigin="anonymous"
-          className="absolute inset-0 h-full w-full object-cover object-center"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/55 via-[#0a0a0a]/20 to-transparent" />
+    <main className="bg-[#F9F7F6] text-[#211E1D]">
+      <section className="relative min-h-[92vh] overflow-hidden border-b border-[#CFC4BA]">
+        <div className="absolute inset-0">
+          {heroSlides.map((slide, index) => (
+            <motion.img
+              key={slide.image}
+              src={slide.image}
+              alt={slide.title}
+              crossOrigin="anonymous"
+              className="absolute inset-0 h-full w-full object-cover"
+              initial={{ opacity: 0, scale: 1.04 }}
+              animate={{ opacity: index === activeSlide ? 1 : 0, scale: index === activeSlide ? 1 : 1.04 }}
+              transition={{ duration: 1.1, ease: "easeOut" }}
+            />
+          ))}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a]/55 via-[#0a0a0a]/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a]/50 via-transparent to-transparent" />
+        </div>
+
         <div className="relative mx-auto flex min-h-[92vh] max-w-7xl items-end px-4 py-8 sm:px-6 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="max-w-3xl border border-[#C9BDB2] bg-[#F9F7F6]/92 p-6 backdrop-blur-sm sm:p-8"
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#6E655E]">01 / NDDN Store</p>
-            <h1 className="mt-4 font-['Playfair_Display'] text-5xl font-light leading-[0.92] tracking-tight text-[#2E2E2E] sm:text-6xl lg:text-7xl">
-              A quiet luxury wardrobe, composed like a campaign.
-            </h1>
-            <p className="mt-5 max-w-2xl font-['Lora'] text-sm leading-7 text-[#6E655E] sm:text-base">
-              Verified lookbook photography, sculpted silhouettes, and deep-crimson actions on a fine-paper canvas.
-            </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
-              <Link
-                to="/shop"
-                className="inline-flex items-center gap-2 bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000]"
-              >
-                Explore Collection <ArrowRight size={16} />
-              </Link>
-              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#6E655E]">
-                Curated drops / atelier edits
-              </span>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      <section className="border-y border-[#C9BDB2] bg-[#EEE8E2]">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap gap-2.5">
-            {categories.map(({ label, icon: Icon }) => (
-              <Link
-                key={label}
-                to="/shop"
-                className="inline-flex min-w-0 items-center gap-2 border border-[#C9BDB2] bg-[#F9F7F6] px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-[#2E2E2E] transition-colors hover:border-[#8B0000] hover:text-[#8B0000]"
-              >
-                <Icon size={14} />
-                <span className="min-w-0 truncate">{label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="grid gap-6 sm:grid-cols-2">
-            {lookbookImages.slice(0, 4).map((src, index) => (
-              <motion.div
-                key={src}
-                initial={{ opacity: 0, y: 18 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.2 }}
-                transition={{ duration: 0.6, delay: index * 0.08 }}
-                className={cn(
-                  'overflow-hidden border border-[#C9BDB2] bg-white',
-                  index === 0 ? 'sm:col-span-2 aspect-[16/10]' : 'aspect-[3/4]'
-                )}
-              >
-                <img src={src} alt={`Lookbook ${index + 1}`} crossOrigin="anonymous" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
-              </motion.div>
-            ))}
-          </div>
-          <div className="grid gap-6">
-            <div className="border border-[#C9BDB2] bg-white p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#6E655E]">02 / Trending runway</p>
-              <h2 className="mt-4 font-['Playfair_Display'] text-3xl font-light tracking-tight text-[#2E2E2E]">
-                The edit, distilled into tactile essentials.
-              </h2>
-              <p className="mt-4 font-['Lora'] text-sm leading-7 text-[#6E655E]">
-                A restrained selection of live catalog pieces, styled for movement, layering, and seasonless wear.
+          <div className="grid w-full gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
+            <div className="max-w-3xl text-white">
+              <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.35em] text-white/80">
+                <Sparkles className="h-4 w-4" />
+                NDDN Store
               </p>
+              <h1 className="font-['Bodoni_Moda'] text-5xl font-light tracking-tight sm:text-6xl lg:text-7xl">
+                {heroSlides[activeSlide]?.title ?? "Tailored light, sculpted in motion."}
+              </h1>
+              <p className="mt-5 max-w-xl text-sm leading-7 text-white/82 sm:text-base">
+                {heroSlides[activeSlide]?.caption ?? "A quiet edit of modern occasionwear and elevated essentials."}
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link
+                  to="/shop"
+                  className="inline-flex items-center gap-2 border border-[#8B0000] bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#680000]"
+                >
+                  Explore Collection <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  to="/shop"
+                  className="inline-flex items-center gap-2 border border-white/35 bg-white/10 px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white backdrop-blur-sm transition-colors hover:bg-white/18"
+                >
+                  Shop Latest Drop
+                </Link>
+              </div>
             </div>
-            <div className="grid gap-4">
-              {loading ? (
-                <div className="border border-[#C9BDB2] bg-white p-6 text-sm text-[#6E655E]">Loading live catalog...</div>
-              ) : trending.length > 0 ? (
-                trending.map((product) => <ProductCard key={product.id} product={product} />)
-              ) : (
-                <div className="border border-[#C9BDB2] bg-white p-6 text-sm text-[#6E655E]">No products available right now.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="border border-[#C9BDB2] bg-white p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#6E655E]">03 / Atelier manifesto</p>
-            <h2 className="mt-4 font-['Playfair_Display'] text-4xl font-light tracking-tight text-[#2E2E2E]">
-              Crafted with restraint, worn with conviction.
-            </h2>
-            <p className="mt-4 font-['Lora'] text-sm leading-7 text-[#6E655E]">
-              NDDN Store pairs verified imagery with precise silhouettes, allowing the garment, not the interface, to lead.
-            </p>
-            <Link
-              to="/shop"
-              className="mt-6 inline-flex items-center gap-2 border border-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#8B0000] transition-colors hover:bg-[#8B0000] hover:text-white"
-            >
-              Shop Latest Drop <ArrowRight size={16} />
-            </Link>
-          </div>
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="aspect-[4/5] overflow-hidden border border-[#C9BDB2] bg-white">
-              <img src={atelierImage} alt="Atelier portrait" crossOrigin="anonymous" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
-            </div>
-            <div className="grid gap-6">
-              {lookbookImages.slice(4).map((src, index) => (
-                <div key={src} className={cn('overflow-hidden border border-[#C9BDB2] bg-white', index === 0 ? 'aspect-[16/10]' : 'aspect-[3/4]')}>
-                  <img src={src} alt={`Editorial detail ${index + 5}`} crossOrigin="anonymous" className="h-full w-full object-cover transition-transform duration-500 hover:scale-105" />
-                </div>
+            <div className="grid gap-3 self-end border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+              <div className="flex items-center justify-between border-b border-white/15 pb-3 text-[11px] uppercase tracking-[0.3em] text-white/75">
+                <span>Collection Index</span>
+                <span>{String(activeSlide + 1).padStart(2, "0")}</span>
+              </div>
+              {heroSlides.map((slide, index) => (
+                <button
+                  key={slide.title}
+                  type="button"
+                  onClick={() => setActiveSlide(index)}
+                  className="flex items-center justify-between gap-3 border border-white/10 px-3 py-3 text-left transition-colors hover:bg-white/10"
+                >
+                  <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-[0.24em] text-white">
+                    {slide.title}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-white/80" />
+                </button>
               ))}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="border-t border-[#C9BDB2] bg-[#EEE8E2]">
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#6E655E]">04 / Newsletter</p>
-              <h2 className="mt-4 font-['Playfair_Display'] text-3xl font-light tracking-tight text-[#2E2E2E]">
-                Receive the next drop before it lands.
-              </h2>
-            </div>
-            <form className="flex flex-col gap-3 sm:flex-row">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#665F5B]">Featured edit</p>
+            <h2 className="mt-2 font-['Bodoni_Moda'] text-3xl font-light tracking-tight sm:text-4xl">
+              Selected pieces from the current collection
+            </h2>
+          </div>
+          <Link to="/shop" className="hidden items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#8B0000] sm:inline-flex">
+            View all <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {featured.map((product) => (
+            <ProductCard key={product?.id ?? product?.slug ?? crypto.randomUUID()} product={product} />
+          ))}
+        </div>
+      </section>
+
+      <section className="border-y border-[#CFC4BA] bg-[#EFE9E3]">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#665F5B]">Craft manifesto</p>
+            <h2 className="mt-3 max-w-xl font-['Bodoni_Moda'] text-4xl font-light tracking-tight">
+              Precision tailoring, tactile fabrics, and a measured sense of drama.
+            </h2>
+          </div>
+          <div className="grid gap-4 text-sm leading-7 text-[#665F5B] sm:grid-cols-2">
+            <p>
+              Every piece is presented with editorial restraint, allowing silhouette, texture, and proportion to lead the experience.
+            </p>
+            <p>
+              The store pairs luxury commerce with a calm interface: verified imagery, disciplined spacing, and a deep-crimson accent system.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap gap-2">
+          {categories.map((category) => (
+            <Link
+              key={category.slug}
+              to={`/shop?category=${category.slug}`}
+              className="inline-flex min-w-0 items-center gap-2 border border-[#CFC4BA] bg-white px-4 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-[#211E1D] transition-colors hover:border-[#8B0000] hover:text-[#8B0000]"
+            >
+              <span className="min-w-0 truncate">{category.name}</span>
+              <ArrowRight className="h-4 w-4 shrink-0" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+          <div className="border border-[#CFC4BA] bg-white p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#665F5B]">Newsletter</p>
+            <h2 className="mt-3 font-['Bodoni_Moda'] text-3xl font-light tracking-tight">Receive the next drop before it opens.</h2>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <input
                 type="email"
                 placeholder="Email address"
-                className="min-w-0 flex-1 border border-[#C9BDB2] bg-[#F9F7F6] px-4 py-3 text-sm text-[#2E2E2E] outline-none placeholder:text-[#6E655E]"
+                className="min-w-0 flex-1 border border-[#CFC4BA] bg-[#F9F7F6] px-4 py-3 text-sm outline-none placeholder:text-[#665F5B] focus:border-[#8B0000]"
               />
               <button
-                type="submit"
-                className="inline-flex items-center justify-center gap-2 bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#650000]"
+                type="button"
+                onClick={() => toast.success("Subscription request saved.")}
+                className="inline-flex items-center justify-center gap-2 border border-[#8B0000] bg-[#8B0000] px-5 py-3 text-xs font-semibold uppercase tracking-[0.28em] text-white transition-colors hover:bg-[#680000]"
               >
-                Subscribe <ArrowRight size={16} />
+                Subscribe <ArrowRight className="h-4 w-4" />
               </button>
-            </form>
+            </div>
+          </div>
+
+          <div className="grid gap-4 border border-[#CFC4BA] bg-[#EFE9E3] p-6">
+            <div className="flex items-center gap-3">
+              <Star className="h-5 w-5 text-[#8B0000]" />
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#665F5B]">Editorial commerce</p>
+            </div>
+            <p className="text-sm leading-7 text-[#665F5B]">
+              Browse a luxury storefront shaped by measured motion, refined product presentation, and a seamless path from discovery to checkout.
+            </p>
+            <Link to="/shop" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#8B0000]">
+              Enter the shop <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </section>
